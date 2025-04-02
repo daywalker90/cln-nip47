@@ -399,7 +399,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
             )
         )
 
-    invoice_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
+    listpays_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
         "invoices"
     ][0]
     invoice_decode = l1.rpc.call("decode", [invoice.invoice])
@@ -415,10 +415,10 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.description == "test1"
     assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
     assert invoice_lookup.description_hash is None
-    assert invoice_lookup.expires_at.as_secs() == invoice_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
-    assert invoice_lookup.payment_hash == invoice_rpc["payment_hash"]
+    assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
     assert invoice_lookup.settled_at is None
 
@@ -433,10 +433,10 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.description == "test1"
     assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
     assert invoice_lookup.description_hash is None
-    assert invoice_lookup.expires_at.as_secs() == invoice_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
-    assert invoice_lookup.payment_hash == invoice_rpc["payment_hash"]
+    assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
     assert invoice_lookup.settled_at is None
 
@@ -449,7 +449,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
         )
     )
 
-    invoice_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
+    listpays_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
         "invoices"
     ][0]
     invoice_decode = l1.rpc.call("decode", [invoice.invoice])
@@ -467,15 +467,15 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert (
         invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
     )
-    assert invoice_lookup.expires_at.as_secs() == invoice_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
-    assert invoice_lookup.payment_hash == invoice_rpc["payment_hash"]
+    assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
     assert invoice_lookup.settled_at is None
 
     l2.rpc.call("pay", {"bolt11": invoice.invoice})
-    invoice_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
+    listpays_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
         "invoices"
     ][0]
     invoice_lookup = await nwc.lookup_invoice(
@@ -491,12 +491,12 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert (
         invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
     )
-    assert invoice_lookup.expires_at.as_secs() == invoice_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
-    assert invoice_lookup.payment_hash == invoice_rpc["payment_hash"]
+    assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
-    assert invoice_lookup.settled_at.as_secs() == invoice_rpc["paid_at"]
+    assert invoice_lookup.settled_at.as_secs() == listpays_rpc["paid_at"]
 
     invoice = l3.rpc.call(
         "invoice",
@@ -508,9 +508,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     )
     invoice_decode = l3.rpc.call("decode", [invoice["bolt11"]])
     pay = l1.rpc.call("pay", {"bolt11": invoice["bolt11"]})
-    invoice_rpc = l3.rpc.call("listinvoices", {"invstring": invoice["bolt11"]})[
-        "invoices"
-    ][0]
+    listpays_rpc = l1.rpc.call("listpays", {"bolt11": invoice["bolt11"]})["pays"][0]
     invoice_lookup = await nwc.lookup_invoice(
         LookupInvoiceRequest(
             payment_hash=pay["payment_hash"],
@@ -525,9 +523,9 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.expires_at is None
     assert invoice_lookup.fees_paid == 1
     assert invoice_lookup.metadata is None
-    assert invoice_lookup.payment_hash == invoice_rpc["payment_hash"]
+    assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "OUTGOING"
-    assert invoice_lookup.settled_at.as_secs() == invoice_rpc["paid_at"]
+    assert invoice_lookup.settled_at.as_secs() == listpays_rpc["completed_at"]
 
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
