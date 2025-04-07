@@ -193,7 +193,7 @@ pub async fn nwc_list(
 
     if let Some(lbl) = label {
         let nwc_store = load_nwc_store(&mut rpc, &lbl).await?;
-        nwcs.push(serde_json::to_value(nwc_store)?);
+        nwcs.push(json!({lbl:nwc_store}));
     } else {
         let nwcs_store = rpc
             .call_typed(&ListdatastoreRequest {
@@ -205,7 +205,7 @@ pub async fn nwc_list(
         for datastore in nwcs_store.into_iter() {
             let label = datastore.key.last().unwrap().to_owned();
             let nwc_store = load_nwc_store(&mut rpc, &label).await?;
-            nwcs.push(serde_json::to_value(nwc_store)?);
+            nwcs.push(json!({label:nwc_store}));
         }
     }
     Ok(serde_json::Value::Array(nwcs))
