@@ -2,7 +2,7 @@ use std::{path::Path, time::Duration};
 
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::{DecodeRequest, PayRequest},
+    model::requests::{DecodeRequest, PayRequest, XpayRequest},
     primitives::Amount,
     ClnRpc,
 };
@@ -11,7 +11,7 @@ use tokio::time;
 
 use crate::{
     structs::PluginState,
-    util::{budget_amount_check, load_nwc_store, update_nwc_store},
+    util::{at_or_above_version, budget_amount_check, load_nwc_store, update_nwc_store},
 };
 
 pub async fn pay_invoice(
@@ -110,67 +110,73 @@ pub async fn pay_invoice(
         },
     )?;
 
-    match rpc
-        .call_typed(&PayRequest {
-            amount_msat: params.amount.map(Amount::from_msat),
-            description: None,
-            exemptfee: None,
-            label: None,
-            localinvreqid: None,
-            maxdelay: None,
-            maxfee: None,
-            maxfeepercent: None,
-            partial_msat: None,
-            retry_for: None,
-            riskfactor: None,
-            exclude: None,
-            bolt11: params.invoice,
-        })
-        .await
-    {
-        Ok(o) => {
-            if let Some(ref mut bdg) = nwc_store.budget_msat {
-                *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
-                update_nwc_store(&mut rpc, label, nwc_store)
-                    .await
-                    .map_err(|e| {
-                        (
-                            nip47::NIP47Error {
-                                code: nip47::ErrorCode::Internal,
-                                message: e.to_string(),
-                            },
-                            id.clone(),
-                        )
-                    })?;
-            }
+    let my_version = plugin.state().config.lock().clone().my_cln_version;
 
-            let preimage = hex::encode(o.payment_preimage.to_vec());
-            Ok((nip47::PayInvoiceResponse { preimage }, id))
-        }
-        Err(e) => match e.code {
-            Some(c) => match c {
-                201 | 207 | 219 => Err((
-                    nip47::NIP47Error {
-                        code: nip47::ErrorCode::Other,
-                        message: e.to_string(),
-                    },
-                    id,
-                )),
-                203 | 205 | 209 | 210 => Err((
-                    nip47::NIP47Error {
-                        code: nip47::ErrorCode::PaymentFailed,
-                        message: e.to_string(),
-                    },
-                    id,
-                )),
-                206 => Err((
-                    nip47::NIP47Error {
-                        code: nip47::ErrorCode::InsufficientBalance,
-                        message: e.to_string(),
-                    },
-                    id,
-                )),
-                _ => Err((
+    if at_or_above_version(&my_version, "24.11").map_err(|e| {
+        (
+            nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: e.to_string(),
+            },
+            id.clone(),
+        )
+    })? {
+        match rpc
+            .call_typed(&XpayRequest {
+                amount_msat: params.amount.map(Amount::from_msat),
+                maxdelay: None,
+                maxfee: None,
+                partial_msat: None,
+                retry_for: None,
+                layers: None,
+                invstring: params.invoice,
+            })
+            .await
+        {
+            Ok(o) => {
+                if let Some(ref mut bdg) = nwc_store.budget_msat {
+                    *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
+                    update_nwc_store(&mut rpc, label, nwc_store)
+                        .await
+                        .map_err(|e| {
+                            (
+                                nip47::NIP47Error {
+                                    code: nip47::ErrorCode::Internal,
+                                    message: e.to_string(),
+                                },
+                                id.clone(),
+                            )
+                        })?;
+                }
+
+                let preimage = hex::encode(o.payment_preimage.to_vec());
+                Ok((nip47::PayInvoiceResponse { preimage }, id))
+            }
+            Err(e) => match e.code {
+                Some(c) => match c {
+                    207 | 219 => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Other,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
+                    203 | 205 | 209 => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::PaymentFailed,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
+                    _ => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
+                },
+                None => Err((
                     nip47::NIP47Error {
                         code: nip47::ErrorCode::Internal,
                         message: e.to_string(),
@@ -178,14 +184,85 @@ pub async fn pay_invoice(
                     id,
                 )),
             },
-            None => Err((
-                nip47::NIP47Error {
-                    code: nip47::ErrorCode::Internal,
-                    message: e.to_string(),
+        }
+    } else {
+        match rpc
+            .call_typed(&PayRequest {
+                amount_msat: params.amount.map(Amount::from_msat),
+                description: None,
+                exemptfee: None,
+                label: None,
+                localinvreqid: None,
+                maxdelay: None,
+                maxfee: None,
+                maxfeepercent: None,
+                partial_msat: None,
+                retry_for: None,
+                riskfactor: None,
+                exclude: None,
+                bolt11: params.invoice,
+            })
+            .await
+        {
+            Ok(o) => {
+                if let Some(ref mut bdg) = nwc_store.budget_msat {
+                    *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
+                    update_nwc_store(&mut rpc, label, nwc_store)
+                        .await
+                        .map_err(|e| {
+                            (
+                                nip47::NIP47Error {
+                                    code: nip47::ErrorCode::Internal,
+                                    message: e.to_string(),
+                                },
+                                id.clone(),
+                            )
+                        })?;
+                }
+
+                let preimage = hex::encode(o.payment_preimage.to_vec());
+                Ok((nip47::PayInvoiceResponse { preimage }, id))
+            }
+            Err(e) => match e.code {
+                Some(c) => match c {
+                    201 | 207 | 219 => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Other,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
+                    203 | 205 | 209 | 210 => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::PaymentFailed,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
+                    206 => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::InsufficientBalance,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
+                    _ => Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: e.to_string(),
+                        },
+                        id,
+                    )),
                 },
-                id,
-            )),
-        },
+                None => Err((
+                    nip47::NIP47Error {
+                        code: nip47::ErrorCode::Internal,
+                        message: e.to_string(),
+                    },
+                    id,
+                )),
+            },
+        }
     }
 }
 

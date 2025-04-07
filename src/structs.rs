@@ -28,10 +28,14 @@ impl PluginState {
 #[derive(Clone, Debug)]
 pub struct Config {
     pub relays: Vec<nostr_sdk::RelayUrl>,
+    pub my_cln_version: String,
 }
 impl Config {
     pub fn default() -> Config {
-        Config { relays: Vec::new() }
+        Config {
+            relays: Vec::new(),
+            my_cln_version: String::new(),
+        }
     }
 }
 

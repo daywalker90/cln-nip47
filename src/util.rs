@@ -79,6 +79,34 @@ pub async fn update_nwc_store(
     Ok(())
 }
 
+pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, anyhow::Error> {
+    let clean_start_my_version = my_version
+        .split_once('v')
+        .ok_or_else(|| anyhow!("Could not find v in version string"))?
+        .1;
+    let full_clean_my_version: String = clean_start_my_version
+        .chars()
+        .take_while(|x| x.is_ascii_digit() || *x == '.')
+        .collect();
+
+    let my_version_parts: Vec<&str> = full_clean_my_version.split('.').collect();
+    let min_version_parts: Vec<&str> = min_version.split('.').collect();
+
+    if my_version_parts.len() <= 1 || my_version_parts.len() > 3 {
+        return Err(anyhow!("Version string parse error: {}", my_version));
+    }
+    for (my, min) in my_version_parts.iter().zip(min_version_parts.iter()) {
+        let my_num: u32 = my.parse()?;
+        let min_num: u32 = min.parse()?;
+
+        if my_num != min_num {
+            return Ok(my_num > min_num);
+        }
+    }
+
+    Ok(my_version_parts.len() >= min_version_parts.len())
+}
+
 #[test]
 fn test_budget_check() {
     assert!(budget_amount_check(Some(1), Some(1), Some(2)).is_ok());

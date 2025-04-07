@@ -1,5 +1,8 @@
+use std::path::Path;
+
 use anyhow::anyhow;
 use cln_plugin::ConfiguredPlugin;
+use cln_rpc::{model::requests::GetinfoRequest, ClnRpc};
 
 use crate::{
     structs::{PluginState, TimeUnit},
@@ -25,7 +28,14 @@ pub async fn read_startup_options(
             OPT_RELAYS.name()
         ));
     };
+
+    let mut rpc = ClnRpc::new(
+        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
+    )
+    .await?;
+    let version = rpc.call_typed(&GetinfoRequest {}).await?.version;
     let mut config = state.config.lock();
+    config.my_cln_version = version;
     for relay in relays_str.into_iter() {
         log::debug!("RELAY:{}", relay);
         config.relays.push(nostr_sdk::RelayUrl::parse(&relay)?);
