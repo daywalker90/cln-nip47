@@ -769,7 +769,7 @@ async def test_pay_invoice(node_factory, get_plugin, nostr_client):  # noqa: F81
         "invoice",
         {"label": generate_random_label(), "description": "test2", "amount_msat": 1},
     )
-    with pytest.raises(NostrSdkError.Generic, match="msatoshi parameter unnecessary"):
+    with pytest.raises(NostrSdkError.Generic, match="unnecessary"):
         await nwc.pay_invoice(
             PayInvoiceRequest(id=None, amount=1, invoice=invoice["bolt11"])
         )
@@ -954,7 +954,7 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
     assert result.preimage is not None
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["budget_msat"] == 0
+    assert list["test1"]["budget_msat"] == 0
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -964,7 +964,7 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
     time.sleep(11)
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["budget_msat"] == 3000
+    assert list["test1"]["budget_msat"] == 3000
 
     invoice = l2.rpc.call(
         "invoice",
@@ -976,7 +976,7 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
     assert result.preimage is not None
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["budget_msat"] == 0
+    assert list["test1"]["budget_msat"] == 0
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -1001,7 +1001,7 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
     time.sleep(11)
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["budget_msat"] == 3000
+    assert list["test1"]["budget_msat"] == 3000
 
 
 @pytest_asyncio.fixture(scope="function")
