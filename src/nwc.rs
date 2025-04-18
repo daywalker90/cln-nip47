@@ -49,6 +49,10 @@ pub async fn run_nwc(
                 .wait_for_connection(Duration::from_secs(30))
                 .await;
             let relays = client_clone.relays().await;
+            if relays.is_empty() {
+                log::info!("No more relays left, we probably shut down. Exiting...");
+                break;
+            }
             let mut connected = false;
             for (url, relay) in relays {
                 if relay.status() == RelayStatus::Connected {

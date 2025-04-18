@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.2] Unreleased
+
+### Fixed
+- ``nip47-revoke``: actually stop task if no relays were ever connected
+
 ## [0.1.1] 2025-04-07
 
 ### Changed
