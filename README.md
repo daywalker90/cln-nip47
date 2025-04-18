@@ -41,8 +41,13 @@ Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 
 # Documentation
 
+## Relays
+It is highly recommended to use your own relay since public relays may limit content length, amount of public keys per IP or require unsupported things like proof of work or payments. Each NWC you create is a separate public key and the ``list_transactions`` method can have quite a large content length!
+
+For example you can use [nostr-rs-relay](https://github.com/scsibug/nostr-rs-relay) with ``pubkey_whitelist`` set to both ``clientkey_public`` and ``walletkey_public`` (returned from ``nip47-create``/``nip47-list``).
+
 ## Options
-* `nip47-relays`: Specify the relays that you want to use with your NWC. Can be set multiple times to use multiple relays, but it is highly recommended to use your own relay since public relays may limit content length, amount of public keys per IP or require unsupported things like proof of work or payments. Each NWC you create is a separate public key and the ``list_transactions`` method can have quite a large content length! You must set this atleast one time.
+* `nip47-relays`: Specify the relays that you want to use with your NWC. Can be set multiple times to use multiple relays. You must set this atleast one time.
 
 ## Methods
 * **nip47-create** *label* [*budget_msat*] [*interval*]

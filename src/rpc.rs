@@ -40,6 +40,14 @@ pub async fn nwc_create(
     let mut result = serde_json::Map::new();
     result.insert("uri".to_owned(), serde_json::Value::String(uri.to_string()));
     result.insert("label".to_owned(), serde_json::Value::String(label.clone()));
+    result.insert(
+        "walletkey_public".to_owned(),
+        serde_json::Value::String(wallet_keys.public_key().to_string()),
+    );
+    result.insert(
+        "clientkey_public".to_owned(),
+        serde_json::Value::String(client_keys.public_key().to_string()),
+    );
 
     let mut rpc = ClnRpc::new(
         Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
@@ -193,7 +201,20 @@ pub async fn nwc_list(
 
     if let Some(lbl) = label {
         let nwc_store = load_nwc_store(&mut rpc, &lbl).await?;
-        nwcs.push(json!({lbl:nwc_store}));
+        let wallet_key = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
+        let client_key = Keys::new(nwc_store.uri.secret.clone());
+        let mut nwc_json = json!(nwc_store);
+        nwc_json.as_object_mut().and_then(|n| {
+            n.insert(
+                "walletkey_public".to_owned(),
+                json!(wallet_key.public_key()),
+            );
+            n.insert(
+                "clientkey_public".to_owned(),
+                json!(client_key.public_key()),
+            )
+        });
+        nwcs.push(json!({lbl:nwc_json}));
     } else {
         let nwcs_store = rpc
             .call_typed(&ListdatastoreRequest {
@@ -205,7 +226,20 @@ pub async fn nwc_list(
         for datastore in nwcs_store.into_iter() {
             let label = datastore.key.last().unwrap().to_owned();
             let nwc_store = load_nwc_store(&mut rpc, &label).await?;
-            nwcs.push(json!({label:nwc_store}));
+            let wallet_key = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
+            let client_key = Keys::new(nwc_store.uri.secret.clone());
+            let mut nwc_json = json!(nwc_store);
+            nwc_json.as_object_mut().and_then(|n| {
+                n.insert(
+                    "walletkey_public".to_owned(),
+                    json!(wallet_key.public_key()),
+                );
+                n.insert(
+                    "clientkey_public".to_owned(),
+                    json!(client_key.public_key()),
+                )
+            });
+            nwcs.push(json!({label:nwc_json}));
         }
     }
     Ok(serde_json::Value::Array(nwcs))

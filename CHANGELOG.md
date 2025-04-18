@@ -1,6 +1,9 @@
 # Changelog
 
-## [0.1.2] Unreleased
+## [0.1.2] 2025-04-18
+
+### Added
+- ``nip47-create`` and ``nip47-list``: add ``clientkey_public`` and ``walletkey_public`` to output. These are useful for private relay whitelists.
 
 ### Fixed
 - ``nip47-revoke``: actually stop task if no relays were ever connected
