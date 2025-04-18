@@ -120,6 +120,35 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert get_info.notifications == ["payment_received", "payment_sent"]
     assert get_info.pubkey == node_get_info["id"]
 
+    l1.rpc.call("plugin", {"subcommand": "stop", "plugin": "cln-nip47"})
+    l1.rpc.call(
+        "plugin",
+        {
+            "subcommand": "start",
+            "plugin": str(get_plugin),
+            "nip47-notifications": False,
+        },
+    )
+    l1.daemon.wait_for_log("All NWC's loaded")
+    get_info = await nwc.get_info()
+    assert get_info.alias == node_get_info["alias"]
+    assert get_info.block_height == node_get_info["blockheight"]
+    assert get_info.color == node_get_info["color"]
+    assert get_info.methods == [
+        "pay_invoice",
+        "multi_pay_invoice",
+        "pay_keysend",
+        "multi_pay_keysend",
+        "make_invoice",
+        "lookup_invoice",
+        "list_transactions",
+        "get_balance",
+        "get_info",
+    ]
+    assert get_info.network == "regtest"
+    assert get_info.notifications == []
+    assert get_info.pubkey == node_get_info["id"]
+
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
@@ -733,6 +762,39 @@ async def test_notifications(node_factory, get_plugin, nostr_client):  # noqa: F
     assert "expires_at" not in sent_events[0]["notification"]
     assert sent_events[0]["notification"]["settled_at"] == pay1_list["completed_at"]
     assert "metadata" not in sent_events[0]["notification"]
+
+    l1.rpc.call("plugin", {"subcommand": "stop", "plugin": "cln-nip47"})
+    l1.rpc.call(
+        "plugin",
+        {
+            "subcommand": "start",
+            "plugin": str(get_plugin),
+            "nip47-notifications": False,
+        },
+    )
+    l1.daemon.wait_for_log("All NWC's loaded")
+
+    invoice = l3.rpc.call(
+        "invoice",
+        {
+            "label": generate_random_label(),
+            "description": "test3",
+            "amount_msat": 500,
+        },
+    )
+    pay1 = await nwc.pay_invoice(
+        PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
+    )
+    events = await nostr_client.fetch_events(
+        response_filter, timeout=timedelta(seconds=10)
+    )
+    start_time = datetime.now()
+    while (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await nostr_client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+        assert events.len() == 2
 
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")

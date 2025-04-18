@@ -8,6 +8,7 @@ use crate::nwc_lookups::{list_transactions, lookup_invoice};
 use crate::nwc_pay::{multi_pay_invoice, pay_invoice};
 use crate::structs::{NwcStore, PluginState};
 use crate::tasks::budget_task;
+use crate::OPT_NOTIFICATIONS;
 use cln_plugin::Plugin;
 use nostr_sdk::nips::*;
 use nostr_sdk::Client;
@@ -66,15 +67,21 @@ pub async fn run_nwc(
                 time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
-            let info_event = match EventBuilder::new(
+
+            let mut info_event_builder = EventBuilder::new(
                 Kind::WalletConnectInfo,
                 "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice \
             lookup_invoice list_transactions get_balance get_info",
             )
-            .tag(Tag::parse(vec!["encryption", "nip44_v2 nip04"]).unwrap())
-            .tag(Tag::parse(vec!["notifications", "payment_received payment_sent"]).unwrap())
-            .sign_with_keys(&wallet_keys)
-            {
+            .tag(Tag::parse(vec!["encryption", "nip44_v2 nip04"]).unwrap());
+
+            if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+                info_event_builder = info_event_builder.tag(
+                    Tag::parse(vec!["notifications", "payment_received payment_sent"]).unwrap(),
+                )
+            }
+
+            let info_event = match info_event_builder.sign_with_keys(&wallet_keys) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("Could not sign info_event! {}", e);

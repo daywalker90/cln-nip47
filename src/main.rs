@@ -2,7 +2,7 @@ use std::{path::Path, time::Duration};
 
 use anyhow::anyhow;
 use cln_plugin::{
-    options::{ConfigOption, StringArrayConfigOption},
+    options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
     Builder, Plugin,
 };
 use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc};
@@ -34,6 +34,11 @@ const OPT_RELAYS: StringArrayConfigOption = ConfigOption::new_str_arr_no_default
     "nip47-relays",
     "Nostr relays used for nwc. Can be stated multiple times.",
 );
+const OPT_NOTIFICATIONS: DefaultBooleanConfigOption = ConfigOption::new_bool_with_default(
+    "nip47-notifications",
+    true,
+    "Enable/disable nip47-notifications. Default is `true`",
+);
 pub const PLUGIN_NAME: &str = "cln-nip47";
 
 #[tokio::main]
@@ -48,6 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let confplugin = match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(OPT_RELAYS)
+        .option(OPT_NOTIFICATIONS)
         .rpcmethod("nip47-create", "Create a new nwc", nwc_create)
         .rpcmethod("nip47-revoke", "Revoke a nwc", nwc_revoke)
         .rpcmethod("nip47-budget", "Set budget of a nwc", nwc_budget)

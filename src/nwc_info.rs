@@ -6,6 +6,7 @@ use nostr_sdk::nips::*;
 use nostr_sdk::*;
 
 use crate::structs::PluginState;
+use crate::OPT_NOTIFICATIONS;
 
 pub async fn get_info(
     plugin: Plugin<PluginState>,
@@ -39,6 +40,11 @@ pub async fn get_info(
         "bitcoin" => "mainnet".to_owned(),
         _ => get_info.network,
     };
+    let notifications = if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+        vec!["payment_received".to_owned(), "payment_sent".to_owned()]
+    } else {
+        vec![]
+    };
 
     Ok(nip47::GetInfoResponse {
         alias: get_info.alias,
@@ -58,6 +64,6 @@ pub async fn get_info(
             "get_balance".to_owned(),
             "get_info".to_owned(),
         ],
-        notifications: vec!["payment_received".to_owned(), "payment_sent".to_owned()],
+        notifications,
     })
 }

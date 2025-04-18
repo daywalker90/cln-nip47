@@ -9,6 +9,7 @@ use cln_rpc::primitives::Sha256;
 use cln_rpc::ClnRpc;
 
 use crate::structs::PluginState;
+use crate::OPT_NOTIFICATIONS;
 
 use nostr_sdk::nips::*;
 use nostr_sdk::*;
@@ -17,6 +18,9 @@ pub async fn payment_received_handler(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<(), anyhow::Error> {
+    if !plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+        return Ok(());
+    }
     let label = args
         .get("invoice_payment")
         .ok_or_else(|| anyhow!("Malformed invoice_payment notification: missing invoice_payment"))?
@@ -180,6 +184,9 @@ pub async fn payment_sent_handler(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<(), anyhow::Error> {
+    if !plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+        return Ok(());
+    }
     let payment_hash = args
         .get("sendpay_success")
         .ok_or_else(|| anyhow!("Malformed sendpay_success notification: missing sendpay_success"))?

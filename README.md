@@ -42,12 +42,13 @@ Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 # Documentation
 
 ## Relays
-It is highly recommended to use your own relay since public relays may limit content length, amount of public keys per IP or require unsupported things like proof of work or payments. Each NWC you create is a separate public key and the ``list_transactions`` method can have quite a large content length!
+It is highly recommended to use your own private relay since public relays may limit content length, amount of public keys per IP or require unsupported things like proof of work or payments. Each NWC you create is a separate public key and the ``list_transactions`` method can have quite a large content length! If you still want to use public relays, consider if you need nip47 notifications: if not, disable them with ``nip47-notifications=false``. This will reduce the amount of events send to the relay and maybe not get you rate limited as quickly.
 
-For example you can use [nostr-rs-relay](https://github.com/scsibug/nostr-rs-relay) with ``pubkey_whitelist`` set to both ``clientkey_public`` and ``walletkey_public`` (returned from ``nip47-create``/``nip47-list``).
+For a private relay you can for example use [nostr-rs-relay](https://github.com/scsibug/nostr-rs-relay) with ``pubkey_whitelist`` set to both ``clientkey_public`` and ``walletkey_public`` (returned from ``nip47-create``/``nip47-list``).
 
 ## Options
-* `nip47-relays`: Specify the relays that you want to use with your NWC. Can be set multiple times to use multiple relays. You must set this atleast one time.
+* ``nip47-relays``: Specify the relays that you want to use with your NWC. Can be set multiple times to use multiple relays. NWC's you create will save these and even if you add or remove relays keep the relays from the moment you created that NWC. You must set this atleast one time.
+* ``nip47-notifications``: Enable/disable nip47 notifications. Default is enabled (``true``)
 
 ## Methods
 * **nip47-create** *label* [*budget_msat*] [*interval*]

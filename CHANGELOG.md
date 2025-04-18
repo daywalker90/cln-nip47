@@ -4,6 +4,7 @@
 
 ### Added
 - ``nip47-create`` and ``nip47-list``: add ``clientkey_public`` and ``walletkey_public`` to output. These are useful for private relay whitelists.
+- ``nip47-notifications``: new option to enable/disable nip47 notifications. Usefule if you don't need them and want to use public relays that may rate limit you.
 
 ### Fixed
 - ``nip47-revoke``: actually stop task if no relays were ever connected
