@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "cln-nip47"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "cln-plugin",
