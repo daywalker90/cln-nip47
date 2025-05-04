@@ -100,7 +100,8 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     node_get_info = l1.rpc.call("getinfo", {})
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
-    nwc = Nwc(NostrWalletConnectUri.parse(uri_str))
+    uri = NostrWalletConnectUri.parse(uri_str)
+    nwc = Nwc(uri)
     get_info = await nwc.get_info()
     assert get_info.alias == node_get_info["alias"]
     assert get_info.block_height == node_get_info["blockheight"]
@@ -148,6 +149,57 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert get_info.network == "regtest"
     assert get_info.notifications == []
     assert get_info.pubkey == node_get_info["id"]
+
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    client = Client(signer)
+    await client.add_relay(f"ws://{url}")
+    await client.connect()
+
+    response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 1
+    assert (
+        events.to_vec()[0].content()
+        == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info"
+    )
+
+    uri_str = l1.rpc.call("nip47-create", ["test2", 0])["uri"]
+    LOGGER.info(uri_str)
+    uri = NostrWalletConnectUri.parse(uri_str)
+    nwc = Nwc(uri)
+    get_info = await nwc.get_info()
+    assert get_info.methods == [
+        "make_invoice",
+        "lookup_invoice",
+        "list_transactions",
+        "get_balance",
+        "get_info",
+    ]
+
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    client = Client(signer)
+    await client.add_relay(f"ws://{url}")
+    await client.connect()
+
+    response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 1
+    assert (
+        events.to_vec()[0].content()
+        == "make_invoice lookup_invoice list_transactions get_balance get_info"
+    )
 
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
@@ -1064,6 +1116,129 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
     assert list["test1"]["budget_msat"] == 3000
+
+
+@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
+@pytest.mark.asyncio
+async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: F811
+    nostr_client, relay_port = nostr_client
+    url = f"127.0.0.1:{relay_port}"
+    l1, l2 = node_factory.line_graph(
+        2,
+        wait_for_announce=True,
+        opts=[
+            {
+                "log-level": "debug",
+                "plugin": get_plugin,
+                "nip47-relays": f"ws://{url}",
+            },
+            {"log-level": "debug"},
+        ],
+    )
+    uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
+    LOGGER.info(uri_str)
+    invoice = l2.rpc.call(
+        "invoice",
+        {"label": generate_random_label(), "description": "test1", "amount_msat": 5000},
+    )
+    uri = NostrWalletConnectUri.parse(uri_str)
+    nwc = Nwc(uri)
+    balance = await nwc.get_balance()
+    assert balance == 3000
+
+    with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
+        await nwc.pay_invoice(
+            PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
+        )
+
+    l1.rpc.call("nip47-budget", ["test1", 4000])
+    balance = await nwc.get_balance()
+    assert balance == 4000
+
+    with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
+        await nwc.pay_invoice(
+            PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
+        )
+
+    l1.rpc.call("nip47-budget", ["test1", 5000, "15s"])
+    balance = await nwc.get_balance()
+    assert balance == 5000
+
+    with pytest.raises(
+        RpcError, match="`budget_msat` must be greater than 0 if you use `interval`"
+    ):
+        l1.rpc.call("nip47-budget", ["test1", 0, "1s"])
+
+    pay = await nwc.pay_invoice(
+        PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
+    )
+    assert pay.preimage is not None
+
+    balance = await nwc.get_balance()
+    assert balance == 0
+
+    get_info = await nwc.get_info()
+    assert get_info.methods == [
+        "pay_invoice",
+        "multi_pay_invoice",
+        "pay_keysend",
+        "multi_pay_keysend",
+        "make_invoice",
+        "lookup_invoice",
+        "list_transactions",
+        "get_balance",
+        "get_info",
+    ]
+
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    client = Client(signer)
+    await client.add_relay(f"ws://{url}")
+    await client.connect()
+
+    response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 1
+    assert (
+        events.to_vec()[0].content()
+        == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info"
+    )
+
+    time.sleep(16)
+
+    balance = await nwc.get_balance()
+    assert balance == 5000
+
+    l1.rpc.call("nip47-budget", ["test1", 0])
+    balance = await nwc.get_balance()
+    assert balance == 0
+
+    get_info = await nwc.get_info()
+    assert get_info.methods == [
+        "make_invoice",
+        "lookup_invoice",
+        "list_transactions",
+        "get_balance",
+        "get_info",
+    ]
+
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 1
+    assert (
+        events.to_vec()[0].content()
+        == "make_invoice lookup_invoice list_transactions get_balance get_info"
+    )
 
 
 @pytest_asyncio.fixture(scope="function")

@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, path::Path, str::FromStr};
+use std::{cmp::Reverse, str::FromStr};
 
 use cln_plugin::Plugin;
 use cln_rpc::{
@@ -7,7 +7,6 @@ use cln_rpc::{
         responses::{ListinvoicesInvoicesStatus, ListpaysPaysStatus},
     },
     primitives::Sha256,
-    ClnRpc,
 };
 use nostr_sdk::nips::*;
 use nostr_sdk::*;
@@ -18,14 +17,7 @@ pub async fn lookup_invoice(
     plugin: Plugin<PluginState>,
     params: nip47::LookupInvoiceRequest,
 ) -> Result<nip47::LookupInvoiceResponse, nip47::NIP47Error> {
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Internal,
-        message: e.to_string(),
-    })?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     if params.payment_hash.is_none() && params.invoice.is_none() {
         return Err(nip47::NIP47Error {
@@ -252,14 +244,7 @@ pub async fn list_transactions(
     plugin: Plugin<PluginState>,
     params: nip47::ListTransactionsRequest,
 ) -> Result<Vec<nip47::LookupInvoiceResponse>, nip47::NIP47Error> {
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Internal,
-        message: e.to_string(),
-    })?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let (query_invoices, query_payments) = match params.transaction_type {
         Some(t) => match t {

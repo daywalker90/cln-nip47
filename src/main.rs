@@ -14,7 +14,7 @@ use parse::read_startup_options;
 use rpc::{nwc_budget, nwc_create, nwc_list, nwc_revoke};
 use structs::PluginState;
 use tokio::time;
-use util::load_nwc_store;
+use util::{load_nwc_store, update_nwc_store};
 
 mod nwc;
 mod nwc_balance;
@@ -40,6 +40,24 @@ const OPT_NOTIFICATIONS: DefaultBooleanConfigOption = ConfigOption::new_bool_wit
     "Enable/disable nip47-notifications. Default is `true`",
 );
 pub const PLUGIN_NAME: &str = "cln-nip47";
+pub const WALLET_READ_METHODS: [&str; 5] = [
+    "make_invoice",
+    "lookup_invoice",
+    "list_transactions",
+    "get_balance",
+    "get_info",
+];
+pub const WALLET_ALL_METHODS: [&str; 9] = [
+    "pay_invoice",
+    "multi_pay_invoice",
+    "pay_keysend",
+    "multi_pay_keysend",
+    WALLET_READ_METHODS[0],
+    WALLET_READ_METHODS[1],
+    WALLET_READ_METHODS[2],
+    WALLET_READ_METHODS[3],
+    WALLET_READ_METHODS[4],
+];
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -49,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
     log_panics::init();
 
-    let state = PluginState::default();
+    let state;
 
     let confplugin = match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(OPT_RELAYS)
@@ -66,6 +84,16 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?
     {
         Some(plugin) => {
+            let rpc_file = Path::new(&plugin.configuration().lightning_dir)
+                .join(plugin.configuration().rpc_file);
+            state = match PluginState::new(rpc_file).await {
+                Ok(state) => state,
+                Err(e) => {
+                    return plugin
+                        .disable(format!("Error connecting to cln rpc: {}", e).as_str())
+                        .await;
+                }
+            };
             match read_startup_options(&plugin, &state).await {
                 Ok(()) => &(),
                 Err(e) => return plugin.disable(format!("{}", e).as_str()).await,
@@ -78,13 +106,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let plugin = confplugin.start(state).await?;
 
     {
-        let _guard = plugin.state().rpc_lock.lock().await;
+        let mut rpc = plugin.state().rpc_lock.lock().await;
 
         // Make sure incase of rapid nip47-create and plugin restarts info_events
         // have a different timestamp and therefore ID so relays don't disconnect us
         time::sleep(Duration::from_secs(1)).await;
 
-        match load_nwcs(plugin.clone()).await {
+        match load_nwcs(plugin.clone(), &mut rpc).await {
             Ok(_) => log::info!("All NWC's loaded"),
             Err(e) => {
                 println!(
@@ -112,11 +140,7 @@ async fn shutdown_handler(
     std::process::exit(0)
 }
 
-async fn load_nwcs(plugin: Plugin<PluginState>) -> Result<(), anyhow::Error> {
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
+async fn load_nwcs(plugin: Plugin<PluginState>, rpc: &mut ClnRpc) -> Result<(), anyhow::Error> {
     let labels = rpc
         .call_typed(&ListdatastoreRequest {
             key: Some(vec![PLUGIN_NAME.to_owned()]),
@@ -124,15 +148,18 @@ async fn load_nwcs(plugin: Plugin<PluginState>) -> Result<(), anyhow::Error> {
         .await?;
     for datastore in labels.datastore.into_iter() {
         let label = datastore.key.last().unwrap();
-        let nwc_store = load_nwc_store(&mut rpc, label).await?;
+        let mut nwc_store = load_nwc_store(rpc, label).await?;
 
-        let client = run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
+        // check NWC's created with cln-nip47 <= v0.1.3 for intervals with 0 reset budget
+        if let Some(interval_conf) = &nwc_store.interval_config {
+            if interval_conf.reset_budget_msat == 0 {
+                nwc_store.interval_config = None;
+                nwc_store.budget_msat = Some(0);
+                update_nwc_store(rpc, label, nwc_store.clone()).await?;
+            }
+        }
 
-        let mut client_handles = plugin.state().handles.lock().await;
-        client_handles.insert(
-            label.clone(),
-            (client, Keys::new(nwc_store.uri.secret).public_key()),
-        );
+        run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
     }
     Ok(())
 }

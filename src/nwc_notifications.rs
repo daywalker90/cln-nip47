@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::anyhow;
@@ -6,7 +5,6 @@ use cln_plugin::Plugin;
 use cln_rpc::model::requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest};
 use cln_rpc::model::responses::ListpaysPaysStatus;
 use cln_rpc::primitives::Sha256;
-use cln_rpc::ClnRpc;
 
 use crate::structs::PluginState;
 use crate::OPT_NOTIFICATIONS;
@@ -29,10 +27,7 @@ pub async fn payment_received_handler(
         .as_str()
         .ok_or_else(|| anyhow!("label not a string"))?;
 
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let invoice_resp = rpc
         .call_typed(&ListinvoicesRequest {
@@ -196,10 +191,7 @@ pub async fn payment_sent_handler(
         .ok_or_else(|| anyhow!("payment_hash not a string"))?
         .to_owned();
 
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let pays_resp = rpc
         .call_typed(&ListpaysRequest {

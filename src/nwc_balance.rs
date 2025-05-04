@@ -1,7 +1,5 @@
-use std::path::Path;
-
 use cln_plugin::Plugin;
-use cln_rpc::{model::requests::ListpeerchannelsRequest, primitives::ChannelState, ClnRpc};
+use cln_rpc::{model::requests::ListpeerchannelsRequest, primitives::ChannelState};
 use nostr_sdk::nips::*;
 
 use crate::{structs::PluginState, util::load_nwc_store};
@@ -10,14 +8,7 @@ pub async fn get_balance(
     plugin: Plugin<PluginState>,
     label: &String,
 ) -> Result<nip47::GetBalanceResponse, nip47::NIP47Error> {
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Internal,
-        message: e.to_string(),
-    })?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let nwc_store = load_nwc_store(&mut rpc, label)
         .await

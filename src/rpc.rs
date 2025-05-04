@@ -1,28 +1,25 @@
-use std::path::Path;
-
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::model::requests::{
     DatastoreMode, DatastoreRequest, DeldatastoreRequest, ListdatastoreRequest,
 };
-use cln_rpc::ClnRpc;
 use nostr_sdk::nips::nip47::*;
 use nostr_sdk::*;
 use serde_json::json;
-use tokio::sync::oneshot;
 
-use crate::nwc::run_nwc;
+use crate::nwc::{
+    run_nwc, send_nwc_info_event, start_nwc_budget_job, stop_nwc, stop_nwc_budget_job,
+};
 use crate::parse::parse_time_period;
 use crate::structs::{BudgetIntervalConfig, NwcStore, PluginState};
-use crate::tasks::budget_task;
-use crate::util::{load_nwc_store, update_nwc_store};
-use crate::PLUGIN_NAME;
+use crate::util::{is_read_only_nwc, load_nwc_store, update_nwc_store};
+use crate::{OPT_NOTIFICATIONS, PLUGIN_NAME, WALLET_ALL_METHODS, WALLET_READ_METHODS};
 
 pub async fn nwc_create(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let _guard = plugin.state().rpc_lock.lock().await;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let (label, budget_msat, interval_secs) = parse_full_args(args)?;
 
@@ -48,11 +45,6 @@ pub async fn nwc_create(
         "clientkey_public".to_owned(),
         serde_json::Value::String(client_keys.public_key().to_string()),
     );
-
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
 
     let interval_config = if let Some(bgt_msat) = budget_msat {
         result.insert(
@@ -89,12 +81,8 @@ pub async fn nwc_create(
     })
     .await?;
 
-    let client = run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
-    let mut locked_handles = plugin.state().handles.lock().await;
-    locked_handles.insert(
-        label.clone(),
-        (client, Keys::new(nwc_store.uri.secret).public_key()),
-    );
+    run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
+
     Ok(serde_json::Value::Object(result))
 }
 
@@ -102,27 +90,11 @@ pub async fn nwc_revoke(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let _guard = plugin.state().rpc_lock.lock().await;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let label = parse_revoke_args(args)?;
 
-    {
-        let mut locked_handles = plugin.state().handles.lock().await;
-        if let Some((client, _client_pubkey)) = locked_handles.remove(&label) {
-            client.shutdown().await;
-        }
-
-        let mut budget_jobs = plugin.state().budget_jobs.lock();
-        let job = budget_jobs.remove(&label);
-        if let Some(j) = job {
-            let _ = j.send(());
-        }
-    }
-
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
+    stop_nwc(plugin.clone(), &label).await;
 
     rpc.call_typed(&DeldatastoreRequest {
         generation: None,
@@ -137,24 +109,15 @@ pub async fn nwc_budget(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let _guard = plugin.state().rpc_lock.lock().await;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let (label, budget_msat, interval_secs) = parse_full_args(args)?;
 
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
-
-    {
-        let mut budget_jobs = plugin.state().budget_jobs.lock();
-        let job = budget_jobs.remove(&label);
-        if let Some(j) = job {
-            let _ = j.send(());
-        }
-    }
+    stop_nwc_budget_job(plugin.clone(), &label);
 
     let mut nwc_store = load_nwc_store(&mut rpc, &label).await?;
+
+    let is_old_nwc_read_only = is_read_only_nwc(&nwc_store);
 
     if let Some(budget) = budget_msat {
         nwc_store.budget_msat = Some(budget);
@@ -173,13 +136,34 @@ pub async fn nwc_budget(
         nwc_store.interval_config = None;
     }
 
+    let is_new_nwc_read_only = is_read_only_nwc(&nwc_store);
+
     if nwc_store.interval_config.is_some() {
-        let (tx, rx) = oneshot::channel::<()>();
-        tokio::spawn(budget_task(rx, plugin.clone(), label.clone()));
-        plugin.state().budget_jobs.lock().insert(label.clone(), tx);
+        start_nwc_budget_job(plugin.clone(), label.clone());
     }
 
-    update_nwc_store(&mut rpc, &label, nwc_store).await?;
+    update_nwc_store(&mut rpc, &label, nwc_store.clone()).await?;
+
+    if is_old_nwc_read_only != is_new_nwc_read_only {
+        let wallet_keys = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
+        let capabilities = if is_new_nwc_read_only {
+            WALLET_READ_METHODS.join(" ")
+        } else {
+            WALLET_ALL_METHODS.join(" ")
+        };
+        let clients = plugin.state().handles.lock().await;
+        send_nwc_info_event(
+            clients
+                .get(&label)
+                .ok_or_else(|| anyhow!("No client found for label: {}", label))?
+                .0
+                .clone(),
+            plugin.option(&OPT_NOTIFICATIONS).unwrap(),
+            capabilities,
+            wallet_keys,
+        )
+        .await?;
+    }
 
     Ok(json!({"budget_updated":label}))
 }
@@ -188,14 +172,9 @@ pub async fn nwc_list(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let _guard = plugin.state().rpc_lock.lock().await;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let label = parse_list_args(args)?;
-
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await?;
 
     let mut nwcs = Vec::new();
 
@@ -248,16 +227,20 @@ pub async fn nwc_list(
 fn parse_full_args(
     args: serde_json::Value,
 ) -> Result<(String, Option<u64>, Option<u64>), anyhow::Error> {
+    let label;
+    let budget_msat;
+    let interval_secs;
+
     match args {
-        serde_json::Value::String(s) => Ok((s, None, None)),
+        serde_json::Value::String(s) => return Ok((s, None, None)),
         serde_json::Value::Array(values) => {
-            let label = values
+            label = values
                 .first()
                 .ok_or_else(|| anyhow!("label missing"))?
                 .as_str()
                 .ok_or_else(|| anyhow!("label is not a string"))?
                 .to_owned();
-            let budget_msat = if let Some(b) = values.get(1) {
+            budget_msat = if let Some(b) = values.get(1) {
                 Some(
                     b.as_u64()
                         .ok_or_else(|| anyhow!("budget_msat is not an integer"))?,
@@ -265,7 +248,7 @@ fn parse_full_args(
             } else {
                 None
             };
-            let interval_secs = if let Some(t) = values.get(2) {
+            interval_secs = if let Some(t) = values.get(2) {
                 Some(parse_time_period(
                     t.as_str()
                         .ok_or_else(|| anyhow!("interval is not a string"))?,
@@ -273,19 +256,15 @@ fn parse_full_args(
             } else {
                 None
             };
-            if interval_secs.is_some() && budget_msat.is_none() {
-                return Err(anyhow!("Must set `budget_msat` if you use `interval`"));
-            }
-            Ok((label, budget_msat, interval_secs))
         }
         serde_json::Value::Object(map) => {
-            let label = map
+            label = map
                 .get("label")
                 .ok_or_else(|| anyhow!("label missing"))?
                 .as_str()
                 .ok_or_else(|| anyhow!("label is not a string"))?
                 .to_owned();
-            let budget_msat = if let Some(b) = map.get("budget_msat") {
+            budget_msat = if let Some(b) = map.get("budget_msat") {
                 Some(
                     b.as_u64()
                         .ok_or_else(|| anyhow!("budget_msat is not an integer"))?,
@@ -293,7 +272,7 @@ fn parse_full_args(
             } else {
                 None
             };
-            let interval_secs = if let Some(t) = map.get("interval") {
+            interval_secs = if let Some(t) = map.get("interval") {
                 Some(parse_time_period(
                     t.as_str()
                         .ok_or_else(|| anyhow!("interval is not a string"))?,
@@ -301,13 +280,19 @@ fn parse_full_args(
             } else {
                 None
             };
-            if interval_secs.is_some() && budget_msat.is_none() {
-                return Err(anyhow!("Must set `budget_msat` if you use `interval`"));
-            }
-            Ok((label, budget_msat, interval_secs))
         }
-        _ => Err(anyhow!("Invalid argument type")),
+        _ => return Err(anyhow!("Invalid argument type")),
     }
+
+    if interval_secs.is_some() && budget_msat.is_none() {
+        return Err(anyhow!("Must set `budget_msat` if you use `interval`"));
+    }
+    if interval_secs.is_some() && budget_msat.unwrap() == 0 {
+        return Err(anyhow!(
+            "`budget_msat` must be greater than 0 if you use `interval`"
+        ));
+    }
+    Ok((label, budget_msat, interval_secs))
 }
 
 fn parse_revoke_args(args: serde_json::Value) -> Result<String, anyhow::Error> {

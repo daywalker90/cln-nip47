@@ -1,10 +1,9 @@
-use std::{path::Path, time::Duration};
+use std::time::Duration;
 
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::requests::{DecodeRequest, PayRequest, XpayRequest},
     primitives::Amount,
-    ClnRpc,
 };
 use nostr_sdk::nips::*;
 use tokio::time;
@@ -19,23 +18,9 @@ pub async fn pay_invoice(
     params: nip47::PayInvoiceRequest,
     label: &String,
 ) -> Result<(nip47::PayInvoiceResponse, String), (nip47::NIP47Error, String)> {
-    let _guard = plugin.state().rpc_lock.lock().await;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let id = params.id.clone().unwrap_or_default();
-
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| {
-        (
-            nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            },
-            id.clone(),
-        )
-    })?;
 
     let invoice_decoded = rpc
         .call_typed(&DecodeRequest {

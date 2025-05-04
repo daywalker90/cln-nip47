@@ -79,6 +79,15 @@ pub async fn update_nwc_store(
     Ok(())
 }
 
+pub fn is_read_only_nwc(nwc_store: &NwcStore) -> bool {
+    if let Some(budget_msat) = nwc_store.budget_msat {
+        if budget_msat == 0 && nwc_store.interval_config.is_none() {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, anyhow::Error> {
     let clean_start_my_version = my_version
         .split_once('v')

@@ -1,5 +1,6 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
+use cln_rpc::ClnRpc;
 use nostr_sdk::client;
 use nostr_sdk::nips::nip47;
 use nostr_sdk::nostr;
@@ -11,17 +12,17 @@ use tokio::sync::oneshot;
 pub struct PluginState {
     pub config: Arc<Mutex<Config>>,
     pub handles: Arc<tokio::sync::Mutex<HashMap<String, (client::Client, nostr::PublicKey)>>>,
-    pub rpc_lock: Arc<tokio::sync::Mutex<()>>,
+    pub rpc_lock: Arc<tokio::sync::Mutex<ClnRpc>>,
     pub budget_jobs: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
 }
 impl PluginState {
-    pub fn default() -> PluginState {
-        PluginState {
+    pub async fn new(path: PathBuf) -> Result<PluginState, anyhow::Error> {
+        Ok(PluginState {
             config: Arc::new(Mutex::new(Config::default())),
             handles: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            rpc_lock: Arc::new(tokio::sync::Mutex::new(())),
+            rpc_lock: Arc::new(tokio::sync::Mutex::new(ClnRpc::new(path).await?)),
             budget_jobs: Arc::new(Mutex::new(HashMap::new())),
-        }
+        })
     }
 }
 

@@ -1,10 +1,9 @@
-use std::{path::Path, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::requests::KeysendRequest,
     primitives::{Amount, PublicKey, TlvEntry, TlvStream},
-    ClnRpc,
 };
 use nostr_sdk::nips::*;
 use tokio::time;
@@ -19,7 +18,7 @@ pub async fn pay_keysend(
     params: nip47::PayKeysendRequest,
     label: &String,
 ) -> Result<nip47::PayKeysendResponse, nip47::NIP47Error> {
-    let _guard = plugin.state().rpc_lock.lock().await;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     if params.preimage.is_some() {
         return Err(nip47::NIP47Error {
@@ -27,15 +26,6 @@ pub async fn pay_keysend(
             message: "CLN generates the preimage itself!".to_owned(),
         });
     }
-
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Internal,
-        message: e.to_string(),
-    })?;
 
     let mut nwc_store = load_nwc_store(&mut rpc, label)
         .await

@@ -1,24 +1,19 @@
-use std::{path::Path, str::FromStr};
+use std::str::FromStr;
 
 use cln_plugin::Plugin;
-use cln_rpc::{model::requests::GetinfoRequest, ClnRpc};
+use cln_rpc::model::requests::GetinfoRequest;
 use nostr_sdk::nips::*;
 use nostr_sdk::*;
 
 use crate::structs::PluginState;
-use crate::OPT_NOTIFICATIONS;
+use crate::util::{is_read_only_nwc, load_nwc_store};
+use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
 
 pub async fn get_info(
     plugin: Plugin<PluginState>,
+    label: &String,
 ) -> Result<nip47::GetInfoResponse, nip47::NIP47Error> {
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Internal,
-        message: e.to_string(),
-    })?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let get_info = rpc
         .call_typed(&GetinfoRequest {})
@@ -46,6 +41,25 @@ pub async fn get_info(
         vec![]
     };
 
+    let nwc_store = load_nwc_store(&mut rpc, label)
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: e.to_string(),
+        })?;
+
+    let methods = if is_read_only_nwc(&nwc_store) {
+        WALLET_READ_METHODS
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect()
+    } else {
+        WALLET_ALL_METHODS
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect()
+    };
+
     Ok(nip47::GetInfoResponse {
         alias: get_info.alias,
         color: Some(get_info.color),
@@ -53,17 +67,7 @@ pub async fn get_info(
         network: Some(network),
         block_height: Some(get_info.blockheight),
         block_hash: None,
-        methods: vec![
-            "pay_invoice".to_owned(),
-            "multi_pay_invoice".to_owned(),
-            "pay_keysend".to_owned(),
-            "multi_pay_keysend".to_owned(),
-            "make_invoice".to_owned(),
-            "lookup_invoice".to_owned(),
-            "list_transactions".to_owned(),
-            "get_balance".to_owned(),
-            "get_info".to_owned(),
-        ],
+        methods,
         notifications,
     })
 }

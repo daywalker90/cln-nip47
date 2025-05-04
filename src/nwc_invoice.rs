@@ -1,10 +1,9 @@
-use std::{path::Path, str::FromStr};
+use std::str::FromStr;
 
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::requests::InvoiceRequest,
     primitives::{Amount, AmountOrAny, Sha256},
-    ClnRpc,
 };
 use nostr_sdk::nips::*;
 use uuid::Uuid;
@@ -15,14 +14,7 @@ pub async fn make_invoice(
     plugin: Plugin<PluginState>,
     params: nip47::MakeInvoiceRequest,
 ) -> Result<nip47::MakeInvoiceResponse, nip47::NIP47Error> {
-    let mut rpc = ClnRpc::new(
-        Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
-    )
-    .await
-    .map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Internal,
-        message: e.to_string(),
-    })?;
+    let mut rpc = plugin.state().rpc_lock.lock().await;
 
     let mut deschashonly = None;
 
