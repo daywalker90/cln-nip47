@@ -41,6 +41,9 @@ Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 
 # Documentation
 
+## Receive-only NWC
+If you want a receive-only NWC which also announces itself without any pay methods use `nip47-create` or `nip47-budget` and set `budget_msat` to `0`. Do NOT set an `interval` on these.
+
 ## Relays
 It is highly recommended to use your own private relay since public relays may limit content length, amount of public keys per IP or require unsupported things like proof of work or payments. Each NWC you create is a separate public key and the ``list_transactions`` method can have quite a large content length! If you still want to use public relays, consider if you need nip47 notifications: if not, disable them with ``nip47-notifications=false``. This will reduce the amount of events send to the relay and maybe not get you rate limited as quickly.
 

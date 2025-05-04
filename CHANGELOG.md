@@ -1,9 +1,9 @@
 # Changelog
 
-## [0.1.3] Unreleased
+## [0.1.3] 2025-05-04
 
 ### Changed
-- if your NWC does not have a renewing budget set with interval and the budget is 0 (aka "receive-only" NWC) it will now also not set any of the pay methods when announcing itself to relays, this is for services which demand a receive-only NWC (e.g. stacker.news) and determine it by the announced methods
+- NWC's with budget at 0 and no renewing interval set (aka "receive-only" NWC) will now stop announcing pay methods when announcing itself to relays, this is for services which demand a receive-only NWC (e.g. stacker.news)
 
 ## [0.1.2] 2025-04-18
 
