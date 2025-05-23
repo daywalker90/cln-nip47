@@ -5,6 +5,7 @@ use crate::nwc_info::get_info;
 use crate::nwc_invoice::make_invoice;
 use crate::nwc_keysend::{multi_pay_keysend, pay_keysend};
 use crate::nwc_lookups::{list_transactions, lookup_invoice};
+use crate::nwc_offer::{lookup_offer, make_offer};
 use crate::nwc_pay::{multi_pay_invoice, pay_invoice};
 use crate::structs::{NwcStore, PluginState};
 use crate::tasks::budget_task;
@@ -421,6 +422,48 @@ async fn nwc_request_handler(
                     String::new(),
                 ),
             }]
+        }
+        nip47::RequestParams::MakeOffer(make_offer_request) => {
+            vec![match make_offer(plugin.clone(), make_offer_request).await {
+                Ok(o) => (
+                    nip47::Response {
+                        result_type: nip47::Method::MakeOffer,
+                        error: None,
+                        result: Some(nip47::ResponseResult::MakeOffer(o)),
+                    },
+                    String::new(),
+                ),
+                Err(e) => (
+                    nip47::Response {
+                        result_type: nip47::Method::MakeOffer,
+                        error: Some(e),
+                        result: None,
+                    },
+                    String::new(),
+                ),
+            }]
+        }
+        nip47::RequestParams::LookupOffer(lookup_offer_request) => {
+            vec![
+                match lookup_offer(plugin.clone(), lookup_offer_request).await {
+                    Ok(o) => (
+                        nip47::Response {
+                            result_type: nip47::Method::LookupOffer,
+                            error: None,
+                            result: Some(nip47::ResponseResult::LookupOffer(o)),
+                        },
+                        String::new(),
+                    ),
+                    Err(e) => (
+                        nip47::Response {
+                            result_type: nip47::Method::LookupOffer,
+                            error: Some(e),
+                            result: None,
+                        },
+                        String::new(),
+                    ),
+                },
+            ]
         }
     };
     for (response, id) in responses.into_iter() {

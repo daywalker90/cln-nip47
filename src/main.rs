@@ -23,6 +23,7 @@ mod nwc_invoice;
 mod nwc_keysend;
 mod nwc_lookups;
 mod nwc_notifications;
+mod nwc_offer;
 mod nwc_pay;
 mod parse;
 mod rpc;
@@ -40,14 +41,16 @@ const OPT_NOTIFICATIONS: DefaultBooleanConfigOption = ConfigOption::new_bool_wit
     "Enable/disable nip47-notifications. Default is `true`",
 );
 pub const PLUGIN_NAME: &str = "cln-nip47";
-pub const WALLET_READ_METHODS: [&str; 5] = [
+pub const WALLET_READ_METHODS: [&str; 7] = [
     "make_invoice",
     "lookup_invoice",
     "list_transactions",
     "get_balance",
     "get_info",
+    "make_offer",
+    "lookup_offer",
 ];
-pub const WALLET_ALL_METHODS: [&str; 9] = [
+pub const WALLET_ALL_METHODS: [&str; 11] = [
     "pay_invoice",
     "multi_pay_invoice",
     "pay_keysend",
@@ -57,6 +60,8 @@ pub const WALLET_ALL_METHODS: [&str; 9] = [
     WALLET_READ_METHODS[2],
     WALLET_READ_METHODS[3],
     WALLET_READ_METHODS[4],
+    WALLET_READ_METHODS[5],
+    WALLET_READ_METHODS[6],
 ];
 
 #[tokio::main]

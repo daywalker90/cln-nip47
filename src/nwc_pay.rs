@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::{DecodeRequest, PayRequest, XpayRequest},
+    model::requests::{DecodeRequest, FetchinvoiceRequest, PayRequest, XpayRequest},
     primitives::Amount,
 };
 use nostr_sdk::nips::*;
@@ -22,7 +22,7 @@ pub async fn pay_invoice(
 
     let id = params.id.clone().unwrap_or_default();
 
-    let invoice_decoded = rpc
+    let params_invoice_decoded = rpc
         .call_typed(&DecodeRequest {
             string: params.invoice.clone(),
         })
@@ -40,10 +40,57 @@ pub async fn pay_invoice(
     let not_invoice_error = Err((
         nip47::NIP47Error {
             code: nip47::ErrorCode::Internal,
-            message: "Not an invoice or invalid invoice".to_owned(),
+            message: "Not an invoice/offer or invalid invoice/offer".to_owned(),
         },
         id.clone(),
     ));
+
+    let (invoice, invoice_decoded) = match params_invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_OFFER => {
+            let bolt12_invoice = rpc
+                .call_typed(&FetchinvoiceRequest {
+                    amount_msat: params.amount.map(Amount::from_msat),
+                    bip353: None,
+                    payer_metadata: None,
+                    payer_note: None,
+                    quantity: None,
+                    recurrence_counter: None,
+                    recurrence_label: None,
+                    recurrence_start: None,
+                    timeout: None,
+                    offer: params.invoice,
+                })
+                .await
+                .map_err(|e| {
+                    (
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: e.to_string(),
+                        },
+                        id.clone(),
+                    )
+                })?;
+            let invoice_decoded = rpc
+                .call_typed(&DecodeRequest {
+                    string: bolt12_invoice.invoice.clone(),
+                })
+                .await
+                .map_err(|e| {
+                    (
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: e.to_string(),
+                        },
+                        id.clone(),
+                    )
+                })?;
+            (bolt12_invoice.invoice, invoice_decoded)
+        }
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            (params.invoice, params_invoice_decoded)
+        }
+        _ => return not_invoice_error,
+    };
 
     if !invoice_decoded.valid {
         return not_invoice_error;
@@ -95,7 +142,15 @@ pub async fn pay_invoice(
         },
     )?;
 
-    let my_version = plugin.state().config.lock().clone().my_cln_version;
+    let my_version = plugin.state().config.lock().my_cln_version.clone();
+
+    let pay_amt_msat = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            params.amount.map(Amount::from_msat)
+        }
+        _ => return not_invoice_error,
+    };
 
     if at_or_above_version(&my_version, "24.11").map_err(|e| {
         (
@@ -108,13 +163,13 @@ pub async fn pay_invoice(
     })? {
         match rpc
             .call_typed(&XpayRequest {
-                amount_msat: params.amount.map(Amount::from_msat),
+                amount_msat: pay_amt_msat,
                 maxdelay: None,
                 maxfee: None,
                 partial_msat: None,
                 retry_for: None,
                 layers: None,
-                invstring: params.invoice,
+                invstring: invoice,
             })
             .await
         {
@@ -173,7 +228,7 @@ pub async fn pay_invoice(
     } else {
         match rpc
             .call_typed(&PayRequest {
-                amount_msat: params.amount.map(Amount::from_msat),
+                amount_msat: pay_amt_msat,
                 description: None,
                 exemptfee: None,
                 label: None,
@@ -185,7 +240,7 @@ pub async fn pay_invoice(
                 retry_for: None,
                 riskfactor: None,
                 exclude: None,
-                bolt11: params.invoice,
+                bolt11: invoice,
             })
             .await
         {
