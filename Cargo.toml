@@ -19,7 +19,17 @@ cln-plugin = "0.5"
 parking_lot = "0.12"
 
 # nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "f7122f5", features = ["nip47", "nip04", "nip44"]}
-nostr-sdk = { version = "0.44", features = ["nip47", "nip04", "nip44"] }
+# nostr-sdk = { version = "0.42", features = ["nip47", "nip04", "nip44"]}
+nostr-sdk = { git = "https://github.com/daywalker90/nostr.git", branch = "bolt12", features = [
+    "nip47",
+    "nip04",
+    "nip44",
+] }
+# nostr-sdk = { path = "../nostr/crates/nostr-sdk", version = "0.42", features = [
+#     "nip47",
+#     "nip04",
+#     "nip44",
+# ] }
 
 uuid = { version = "1", features = ["v4"] }
 

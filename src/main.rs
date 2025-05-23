@@ -24,6 +24,7 @@ mod nwc_invoice;
 mod nwc_keysend;
 mod nwc_lookups;
 mod nwc_notifications;
+mod nwc_offer;
 mod nwc_pay;
 mod parse;
 mod rpc;
@@ -56,6 +57,10 @@ pub const WALLET_PAY_METHODS: [nip47::Method; 4] = [
     nip47::Method::PayKeysend,
     nip47::Method::MultiPayKeysend,
 ];
+pub const WALLET_OFFER_READ_METHODS: [nip47::Method; 2] =
+    [nip47::Method::MakeOffer, nip47::Method::GetOfferInfo];
+pub const WALLET_OFFER_PAY_METHODS: [nip47::Method; 2] =
+    [nip47::Method::PayOffer, nip47::Method::MultiPayOffer];
 pub const WALLET_NOTIFICATIONS: [nip47::NotificationType; 2] = [
     nip47::NotificationType::PaymentReceived,
     nip47::NotificationType::PaymentSent,
