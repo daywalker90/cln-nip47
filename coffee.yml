@@ -1,6 +1,6 @@
 plugin:
   name: cln-nip47
-  version: 0.1.5
+  version: 0.1.6
   lang: rust
   install: |
     cargo build --release && cp target/release/cln-nip47 . && cargo clean

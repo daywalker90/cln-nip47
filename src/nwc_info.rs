@@ -7,7 +7,7 @@ use nostr_sdk::*;
 
 use crate::structs::PluginState;
 use crate::util::{is_read_only_nwc, load_nwc_store};
-use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
+use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_NOTIFICATIONS, WALLET_READ_METHODS};
 
 pub async fn get_info(
     plugin: Plugin<PluginState>,
@@ -36,7 +36,10 @@ pub async fn get_info(
         _ => get_info.network,
     };
     let notifications = if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
-        vec!["payment_received".to_owned(), "payment_sent".to_owned()]
+        WALLET_NOTIFICATIONS
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect::<Vec<String>>()
     } else {
         vec![]
     };

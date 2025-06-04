@@ -171,6 +171,10 @@ jobs:
             python -m grpc_tools.protoc --proto_path="proto" --python_out="tests" --grpc_python_out="tests" proto/*.proto
           fi
 
+          url="https://github.com/daywalker90/holdinvoice/releases/download/v5.0.0/holdinvoice-v5.0.0-x86_64-linux-gnu.tar.gz"
+          wget $url
+          tar -xvf ${url##*/} -C tests
+
           cargo build
         fi
 

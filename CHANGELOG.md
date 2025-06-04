@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## [0.1.6] Unreleased
 
 ### Added
+- methods and notification related to holdinvoices
 - new `state` field in transaction responses
 - include pending and failed payments in ``list_transactions``
 - include expired invoices in ``list_transactions``

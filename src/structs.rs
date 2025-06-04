@@ -1,6 +1,9 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
-use cln_rpc::ClnRpc;
+use cln_rpc::{
+    primitives::{Secret, Sha256, ShortChannelId},
+    ClnRpc,
+};
 use nostr_sdk::client;
 use nostr_sdk::nips::nip47;
 use nostr_sdk::nostr;
@@ -30,12 +33,14 @@ impl PluginState {
 pub struct Config {
     pub relays: Vec<nostr_sdk::RelayUrl>,
     pub my_cln_version: String,
+    pub hold_invoice_support: bool,
 }
 impl Config {
     pub fn default() -> Config {
         Config {
             relays: Vec::new(),
             my_cln_version: String::new(),
+            hold_invoice_support: false,
         }
     }
 }
@@ -78,4 +83,43 @@ pub struct NwcStore {
     pub budget_msat: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_config: Option<BudgetIntervalConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoldInvoiceRequest {
+    pub amount_msat: u64,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiry: Option<u64>,
+    #[serde(skip_serializing_if = "is_none_or_empty")]
+    pub exposeprivatechannels: Option<Vec<ShortChannelId>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cltv: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deschashonly: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoldInvoiceResponse {
+    pub bolt11: String,
+    pub payment_hash: Sha256,
+    pub payment_secret: Secret,
+    pub expires_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<Sha256>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_hash: Option<Sha256>,
+}
+
+fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
+where
+    T: Clone,
+{
+    f.as_ref().map_or(true, |value| value.is_empty())
 }
