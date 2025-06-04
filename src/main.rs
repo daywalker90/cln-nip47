@@ -5,19 +5,21 @@ use cln_plugin::{
     options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
     Builder, Plugin,
 };
-use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc};
+use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc, RpcError};
 
 use nostr_sdk::*;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
 use parse::read_startup_options;
 use rpc::{nwc_budget, nwc_create, nwc_list, nwc_revoke};
+use serde_json::json;
 use structs::PluginState;
 use tokio::time;
-use util::{load_nwc_store, update_nwc_store};
+use util::{at_or_above_version, load_nwc_store, update_nwc_store};
 
 mod nwc;
 mod nwc_balance;
+mod nwc_hold;
 mod nwc_info;
 mod nwc_invoice;
 mod nwc_keysend;
@@ -58,6 +60,13 @@ pub const WALLET_ALL_METHODS: [&str; 9] = [
     WALLET_READ_METHODS[3],
     WALLET_READ_METHODS[4],
 ];
+pub const WALLET_HOLD_METHODS: [&str; 3] = [
+    "make_hold_invoice",
+    "cancel_hold_invoice",
+    "settle_hold_invoice",
+];
+pub const WALLET_NOTIFICATIONS: [&str; 2] = ["payment_received", "payment_sent"];
+pub const WALLET_HOLD_NOTIFICATIONS: [&str; 1] = ["hold_invoice_accepted"];
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -111,6 +120,25 @@ async fn main() -> Result<(), anyhow::Error> {
         // Make sure incase of rapid nip47-create and plugin restarts info_events
         // have a different timestamp and therefore ID so relays don't disconnect us
         time::sleep(Duration::from_secs(1)).await;
+
+        let hold_version: Result<serde_json::Value, RpcError> =
+            rpc.call_raw("holdinvoice-version", &json!({})).await;
+        if let Ok(hv) = hold_version {
+            let hold_version_str = hv
+                .get("version")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("Malformed holdinvoice-version response"))?;
+
+            if at_or_above_version(hold_version_str, "5.0.0")?
+                && !at_or_above_version(hold_version_str, "6.0.0")?
+            {
+                plugin.state().config.lock().hold_invoice_support = true;
+                log::info!("Holdinvoice support enabled");
+            }
+        }
+        if !plugin.state().config.lock().hold_invoice_support {
+            log::info!("No compatible holdinvoice plugin detected. Disabled holdinvoice support");
+        }
 
         match load_nwcs(plugin.clone(), &mut rpc).await {
             Ok(_) => log::info!("All NWC's loaded"),

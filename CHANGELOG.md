@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.6] Unreleased
+
+### Added
+- methods and notification related to holdinvoices
+
 ## [0.1.5] 2025-07-24
 
 ### Changed

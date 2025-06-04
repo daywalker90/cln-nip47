@@ -4,7 +4,10 @@ use cln_rpc::{
     ClnRpc,
 };
 
-use crate::{structs::NwcStore, PLUGIN_NAME};
+use crate::{
+    structs::NwcStore, PLUGIN_NAME, WALLET_ALL_METHODS, WALLET_HOLD_METHODS,
+    WALLET_HOLD_NOTIFICATIONS, WALLET_NOTIFICATIONS, WALLET_READ_METHODS,
+};
 
 pub fn budget_amount_check(
     request_amt_msat: Option<u64>,
@@ -114,6 +117,26 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     }
 
     Ok(my_version_parts.len() >= min_version_parts.len())
+}
+
+pub fn build_capabilities(is_read_only: bool, holdinvoice_support: bool) -> (String, String) {
+    let mut methods = if is_read_only {
+        WALLET_READ_METHODS.join(" ")
+    } else {
+        WALLET_ALL_METHODS.join(" ")
+    };
+    if holdinvoice_support {
+        methods.push(' ');
+        methods.push_str(WALLET_HOLD_METHODS.join(" ").as_str());
+    }
+
+    let mut notifications = WALLET_NOTIFICATIONS.join(" ");
+    if holdinvoice_support {
+        notifications.push(' ');
+        notifications.push_str(WALLET_HOLD_NOTIFICATIONS.join(" ").as_str());
+    }
+
+    (methods, notifications)
 }
 
 #[test]

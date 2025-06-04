@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "cln-nip47"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "cln-plugin",
@@ -852,9 +852,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.14.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f8cc7106155f10bdf99a6f379688f543ad6596a415375b36a59a054ceda1198"
+checksum = "86ea4e65087ff52f3862caff188d489f1fab49a0cb09e01b2e3f1a617b10aaed"
 
 [[package]]
 name = "matchers"
@@ -899,9 +899,8 @@ checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
 
 [[package]]
 name = "nostr"
-version = "0.42.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d193102a62a22b61f9a61b9df54fb19ebab8c1763d088fbb9a6f0f57000fba2d"
+version = "0.43.0"
+source = "git+https://github.com/daywalker90/nostr.git?branch=47-hold#2567544d764c0fd13d80795d657bfc1a222da112"
 dependencies = [
  "aes",
  "base64",
@@ -913,7 +912,6 @@ dependencies = [
  "chacha20poly1305",
  "getrandom 0.2.16",
  "instant",
- "regex",
  "scrypt",
  "secp256k1 0.29.1",
  "serde",
@@ -924,9 +922,8 @@ dependencies = [
 
 [[package]]
 name = "nostr-database"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6aafe85dc7c039c399796043b76009fa744c3a45ac073a023932f7b7d91b1e7"
+version = "0.43.0"
+source = "git+https://github.com/daywalker90/nostr.git?branch=47-hold#2567544d764c0fd13d80795d657bfc1a222da112"
 dependencies = [
  "lru",
  "nostr",
@@ -935,9 +932,8 @@ dependencies = [
 
 [[package]]
 name = "nostr-relay-pool"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df4d5628d2444349570fb185b0c2d92cfdb7e68d62b13bf3e8a4348b5de7430b"
+version = "0.43.0"
+source = "git+https://github.com/daywalker90/nostr.git?branch=47-hold#2567544d764c0fd13d80795d657bfc1a222da112"
 dependencies = [
  "async-utility",
  "async-wsocket",
@@ -952,16 +948,14 @@ dependencies = [
 
 [[package]]
 name = "nostr-sdk"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e928ba9ac2695fbe10b8aefda59f2abfeb23c10a0e86a0b3e0f6a27bb274a2"
+version = "0.43.0"
+source = "git+https://github.com/daywalker90/nostr.git?branch=47-hold#2567544d764c0fd13d80795d657bfc1a222da112"
 dependencies = [
  "async-utility",
  "nostr",
  "nostr-database",
  "nostr-relay-pool",
  "tokio",
- "tracing",
 ]
 
 [[package]]
