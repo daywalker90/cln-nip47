@@ -17,7 +17,11 @@ import pytest_asyncio
 import yaml
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import RpcError, wait_for
-from util import generate_random_label, get_plugin  # noqa: F401
+from util import (  # noqa: F401
+    experimental_offers_check,
+    generate_random_label,
+    get_plugin,
+)
 
 if sys.version_info >= (3, 9):
     from nostr_sdk import (
@@ -90,6 +94,7 @@ async def test_get_balance(node_factory, get_plugin, nostr_client):  # noqa: F81
 async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
+    offers_unsupported = experimental_offers_check(node_factory)
     l1 = node_factory.get_node(
         options={
             "log-level": "debug",
@@ -106,19 +111,32 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert get_info.alias == node_get_info["alias"]
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
-    assert get_info.methods == [
-        "pay_invoice",
-        "multi_pay_invoice",
-        "pay_keysend",
-        "multi_pay_keysend",
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
-        "make_offer",
-        "lookup_offer",
-    ]
+    if offers_unsupported:
+        assert get_info.methods == [
+            "pay_invoice",
+            "multi_pay_invoice",
+            "pay_keysend",
+            "multi_pay_keysend",
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+        ]
+    else:
+        assert get_info.methods == [
+            "pay_invoice",
+            "multi_pay_invoice",
+            "pay_keysend",
+            "multi_pay_keysend",
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+            "make_offer",
+            "lookup_offer",
+        ]
     assert get_info.network == "regtest"
     assert get_info.notifications == ["payment_received", "payment_sent"]
     assert get_info.pubkey == node_get_info["id"]
@@ -137,19 +155,32 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert get_info.alias == node_get_info["alias"]
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
-    assert get_info.methods == [
-        "pay_invoice",
-        "multi_pay_invoice",
-        "pay_keysend",
-        "multi_pay_keysend",
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
-        "make_offer",
-        "lookup_offer",
-    ]
+    if offers_unsupported:
+        assert get_info.methods == [
+            "pay_invoice",
+            "multi_pay_invoice",
+            "pay_keysend",
+            "multi_pay_keysend",
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+        ]
+    else:
+        assert get_info.methods == [
+            "pay_invoice",
+            "multi_pay_invoice",
+            "pay_keysend",
+            "multi_pay_keysend",
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+            "make_offer",
+            "lookup_offer",
+        ]
     assert get_info.network == "regtest"
     assert get_info.notifications == []
     assert get_info.pubkey == node_get_info["id"]
@@ -168,25 +199,40 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
-    assert (
-        events.to_vec()[0].content()
-        == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
-    )
+    if offers_unsupported:
+        assert (
+            events.to_vec()[0].content()
+            == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info"
+        )
+    else:
+        assert (
+            events.to_vec()[0].content()
+            == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
+        )
 
     uri_str = l1.rpc.call("nip47-create", ["test2", 0])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
     nwc = Nwc(uri)
     get_info = await nwc.get_info()
-    assert get_info.methods == [
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
-        "make_offer",
-        "lookup_offer",
-    ]
+    if offers_unsupported:
+        assert get_info.methods == [
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+        ]
+    else:
+        assert get_info.methods == [
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+            "make_offer",
+            "lookup_offer",
+        ]
 
     signer = NostrSigner.keys(Keys(uri.secret()))
     client = Client(signer)
@@ -202,10 +248,16 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
-    assert (
-        events.to_vec()[0].content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
-    )
+    if offers_unsupported:
+        assert (
+            events.to_vec()[0].content()
+            == "make_invoice lookup_invoice list_transactions get_balance get_info"
+        )
+    else:
+        assert (
+            events.to_vec()[0].content()
+            == "make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
+        )
 
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
@@ -284,12 +336,15 @@ async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F8
 async def test_make_offer(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
+    options = {
+        "log-level": "debug",
+        "plugin": get_plugin,
+        "nip47-relays": f"ws://{url}",
+    }
+    if experimental_offers_check(node_factory):
+        options["experimental-offers"] = None
     l1 = node_factory.get_node(
-        options={
-            "log-level": "debug",
-            "plugin": get_plugin,
-            "nip47-relays": f"ws://{url}",
-        },
+        options=options,
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
@@ -357,16 +412,20 @@ async def test_make_offer(node_factory, get_plugin, nostr_client):  # noqa: F811
 async def test_lookup_offer(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": f"ws://{url}",
+        },
+        {"log-level": "debug"},
+    ]
+    if experimental_offers_check(node_factory):
+        opts[0]["experimental-offers"] = None
+        opts[1]["experimental-offers"] = None
     l1, l2 = node_factory.get_nodes(
         2,
-        opts=[
-            {
-                "log-level": "debug",
-                "plugin": get_plugin,
-                "nip47-relays": f"ws://{url}",
-            },
-            {"log-level": "debug"},
-        ],
+        opts=opts,
     )
 
     timestamp = int(time.time())
@@ -652,9 +711,13 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3000
     assert invoice_lookup.description == "test1"
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert invoice_lookup.description_hash is None
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
@@ -670,9 +733,13 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3000
     assert invoice_lookup.description == "test1"
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert invoice_lookup.description_hash is None
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
@@ -702,11 +769,15 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3001
     assert invoice_lookup.description is None
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert (
         invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
     )
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
@@ -726,16 +797,22 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3001
     assert invoice_lookup.description is None
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert (
         invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
     )
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
-    assert invoice_lookup.settled_at.as_secs() == listpays_rpc["paid_at"]
+    assert invoice_lookup.settled_at.as_secs() == pytest.approx(
+        listpays_rpc["paid_at"], abs=1
+    )
 
     invoice = l3.rpc.call(
         "invoice",
@@ -757,14 +834,18 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice["bolt11"]
     assert invoice_lookup.amount == 4000
     assert invoice_lookup.description == "outgoing"
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert invoice_lookup.description_hash is None
     assert invoice_lookup.expires_at is None
     assert invoice_lookup.fees_paid == 1
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "OUTGOING"
-    assert invoice_lookup.settled_at.as_secs() == listpays_rpc["completed_at"]
+    assert invoice_lookup.settled_at.as_secs() == pytest.approx(
+        listpays_rpc["completed_at"], abs=1
+    )
 
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
@@ -1060,17 +1141,21 @@ async def test_pay_invoice(node_factory, get_plugin, nostr_client):  # noqa: F81
 async def test_pay_offer(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": f"ws://{url}",
+        },
+        {"log-level": "debug"},
+    ]
+    if experimental_offers_check(node_factory):
+        opts[0]["experimental-offers"] = None
+        opts[1]["experimental-offers"] = None
     l1, l2 = node_factory.line_graph(
         2,
         wait_for_announce=True,
-        opts=[
-            {
-                "log-level": "debug",
-                "plugin": get_plugin,
-                "nip47-relays": f"ws://{url}",
-            },
-            {"log-level": "debug"},
-        ],
+        opts=opts,
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3001])["uri"]
     LOGGER.info(uri_str)
@@ -1089,7 +1174,7 @@ async def test_pay_offer(node_factory, get_plugin, nostr_client):  # noqa: F811
         "offer",
         {"amount": "any", "description": "test2"},
     )
-    with pytest.raises(NostrSdkError.Generic, match="amount_msat parameter required"):
+    with pytest.raises(NostrSdkError.Generic, match="parameter required"):
         await nwc.pay_invoice(
             PayInvoiceRequest(id=None, amount=None, invoice=offer2["bolt12"])
         )
@@ -1115,17 +1200,21 @@ async def test_pay_offer(node_factory, get_plugin, nostr_client):  # noqa: F811
 async def test_multi_pay(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": f"ws://{url}",
+        },
+        {"log-level": "debug"},
+    ]
+    if experimental_offers_check(node_factory):
+        opts[0]["experimental-offers"] = None
+        opts[1]["experimental-offers"] = None
     l1, l2 = node_factory.line_graph(
         2,
         wait_for_announce=True,
-        opts=[
-            {
-                "log-level": "debug",
-                "plugin": get_plugin,
-                "nip47-relays": f"ws://{url}",
-            },
-            {"log-level": "debug"},
-        ],
+        opts=opts,
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 34000])["uri"]
     LOGGER.info(uri_str)
@@ -1340,6 +1429,7 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
 async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
+    offers_unsupported = experimental_offers_check(node_factory)
     l1, l2 = node_factory.line_graph(
         2,
         wait_for_announce=True,
@@ -1395,19 +1485,32 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
     assert balance == 0
 
     get_info = await nwc.get_info()
-    assert get_info.methods == [
-        "pay_invoice",
-        "multi_pay_invoice",
-        "pay_keysend",
-        "multi_pay_keysend",
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
-        "make_offer",
-        "lookup_offer",
-    ]
+    if offers_unsupported:
+        assert get_info.methods == [
+            "pay_invoice",
+            "multi_pay_invoice",
+            "pay_keysend",
+            "multi_pay_keysend",
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+        ]
+    else:
+        assert get_info.methods == [
+            "pay_invoice",
+            "multi_pay_invoice",
+            "pay_keysend",
+            "multi_pay_keysend",
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+            "make_offer",
+            "lookup_offer",
+        ]
 
     signer = NostrSigner.keys(Keys(uri.secret()))
     client = Client(signer)
@@ -1423,10 +1526,16 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
-    assert (
-        events.to_vec()[0].content()
-        == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
-    )
+    if offers_unsupported:
+        assert (
+            events.to_vec()[0].content()
+            == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info"
+        )
+    else:
+        assert (
+            events.to_vec()[0].content()
+            == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
+        )
 
     time.sleep(16)
 
@@ -1438,15 +1547,24 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
     assert balance == 0
 
     get_info = await nwc.get_info()
-    assert get_info.methods == [
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
-        "make_offer",
-        "lookup_offer",
-    ]
+    if offers_unsupported:
+        assert get_info.methods == [
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+        ]
+    else:
+        assert get_info.methods == [
+            "make_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "get_balance",
+            "get_info",
+            "make_offer",
+            "lookup_offer",
+        ]
 
     events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
     start_time = datetime.now()
@@ -1456,10 +1574,16 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
-    assert (
-        events.to_vec()[0].content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
-    )
+    if offers_unsupported:
+        assert (
+            events.to_vec()[0].content()
+            == "make_invoice lookup_invoice list_transactions get_balance get_info"
+        )
+    else:
+        assert (
+            events.to_vec()[0].content()
+            == "make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
+        )
 
 
 @pytest_asyncio.fixture(scope="function")

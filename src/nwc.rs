@@ -10,7 +10,9 @@ use crate::nwc_pay::{multi_pay_invoice, pay_invoice};
 use crate::structs::{NwcStore, PluginState};
 use crate::tasks::budget_task;
 use crate::util::is_read_only_nwc;
-use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
+use crate::{
+    OPT_NOTIFICATIONS, WALLET_OFFER_METHODS, WALLET_READ_AND_PAY_METHODS, WALLET_READ_METHODS,
+};
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use nostr_sdk::nips::*;
@@ -24,11 +26,26 @@ pub async fn run_nwc(
     label: String,
     nwc_store: NwcStore,
 ) -> Result<(), client::Error> {
-    let capabilities = if is_read_only_nwc(&nwc_store) {
-        WALLET_READ_METHODS.join(" ")
+    let mut methods: Vec<String> = if is_read_only_nwc(&nwc_store) {
+        WALLET_READ_METHODS
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect()
     } else {
-        WALLET_ALL_METHODS.join(" ")
+        WALLET_READ_AND_PAY_METHODS
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect()
     };
+    if plugin.state().config.lock().offer_support {
+        methods.extend(
+            WALLET_OFFER_METHODS
+                .into_iter()
+                .map(|s| s.to_owned())
+                .collect::<Vec<String>>(),
+        );
+    }
+    let capabilities = methods.join(" ");
 
     let wallet_keys = Keys::new(
         SecretKey::from_hex(&nwc_store.walletkey)
