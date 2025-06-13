@@ -70,7 +70,7 @@ For a private relay you can for example use [nostr-rs-relay](https://github.com/
      * ***label***: the label the NWC was created with
 
 * **nip47-budget** *label* [*budget_msat*] [*interval*]
-     * update/add an existing NWC budget a new NWC string with the currently configured relays. For example: ``nip47-create mynwc 10000 1d`` will let you spend 10 satoshis every day using that NWC
+     * update/add/remove a budget for an existing NWC. For example: ``nip47-budget mynwc 10000 1d`` will let you spend 10 satoshis every day using that NWC
      * ***label***: a label to identify this NWC
      * ***budget_msat***: optional. Set an absolute budget in msat that this NWC is allowed to use. This will also be your balance in your wallet. If you ***don't*** set this, the NWC will be allowed to use your ***whole*** node balance and show that aswell in your wallet! Set it to ``0`` to disable paying anything with this NWC
      * ***interval***: optional. Set an amount of time after which the budget will be refreshed ***to*** the amount specified in ``budget_msat``, e.g.:``5seconds`` or ``4weeks``. Supported time units are the same as in ``nip47-create``
