@@ -30,12 +30,14 @@ impl PluginState {
 pub struct Config {
     pub relays: Vec<nostr_sdk::RelayUrl>,
     pub my_cln_version: String,
+    pub offer_support: bool,
 }
 impl Config {
     pub fn default() -> Config {
         Config {
             relays: Vec::new(),
             my_cln_version: String::new(),
+            offer_support: false,
         }
     }
 }
