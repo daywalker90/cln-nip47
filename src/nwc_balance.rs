@@ -21,10 +21,7 @@ pub async fn get_balance(
         bdgt_amt
     } else {
         let listpeerchannels = rpc
-            .call_typed(&ListpeerchannelsRequest {
-                id: None,
-                short_channel_id: None,
-            })
+            .call_typed(&ListpeerchannelsRequest { id: None })
             .await
             .map_err(|e| nip47::NIP47Error {
                 code: nip47::ErrorCode::Internal,
