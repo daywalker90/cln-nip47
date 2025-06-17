@@ -23,6 +23,7 @@ mod nwc_invoice;
 mod nwc_keysend;
 mod nwc_lookups;
 mod nwc_notifications;
+mod nwc_offer;
 mod nwc_pay;
 mod parse;
 mod rpc;
@@ -47,7 +48,8 @@ pub const WALLET_READ_METHODS: [&str; 5] = [
     "get_balance",
     "get_info",
 ];
-pub const WALLET_ALL_METHODS: [&str; 9] = [
+pub const WALLET_OFFER_METHODS: [&str; 2] = ["make_offer", "lookup_offer"];
+pub const WALLET_READ_AND_PAY_METHODS: [&str; 9] = [
     "pay_invoice",
     "multi_pay_invoice",
     "pay_keysend",

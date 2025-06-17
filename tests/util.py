@@ -61,3 +61,12 @@ def experimental_anchors_check(node_factory):
         return True
     else:
         return False
+
+
+def experimental_offers_check(node_factory):
+    l1 = node_factory.get_node()
+    version = l1.rpc.getinfo()["version"]
+    if version.startswith("v24.0"):
+        return True
+    else:
+        return False
