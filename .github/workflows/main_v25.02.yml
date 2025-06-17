@@ -1,4 +1,4 @@
-name: main on CLN v25.02.1
+name: main on CLN v25.02.x
 
 on:
     push:

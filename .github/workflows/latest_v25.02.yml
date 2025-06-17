@@ -1,4 +1,4 @@
-name: latest release on CLN v25.02.1
+name: Latest release on CLN v25.02.x
 
 on:
     release:
