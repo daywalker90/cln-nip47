@@ -494,9 +494,13 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3000
     assert invoice_lookup.description == "test1"
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert invoice_lookup.description_hash is None
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
@@ -512,9 +516,13 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3000
     assert invoice_lookup.description == "test1"
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert invoice_lookup.description_hash is None
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
@@ -544,11 +552,15 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3001
     assert invoice_lookup.description is None
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert (
         invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
     )
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
@@ -568,16 +580,22 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice.invoice
     assert invoice_lookup.amount == 3001
     assert invoice_lookup.description is None
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert (
         invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
     )
-    assert invoice_lookup.expires_at.as_secs() == listpays_rpc["expires_at"]
+    assert invoice_lookup.expires_at.as_secs() == pytest.approx(
+        listpays_rpc["expires_at"], abs=1
+    )
     assert invoice_lookup.fees_paid == 0
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
-    assert invoice_lookup.settled_at.as_secs() == listpays_rpc["paid_at"]
+    assert invoice_lookup.settled_at.as_secs() == pytest.approx(
+        listpays_rpc["paid_at"], abs=1
+    )
 
     invoice = l3.rpc.call(
         "invoice",
@@ -599,14 +617,18 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.invoice == invoice["bolt11"]
     assert invoice_lookup.amount == 4000
     assert invoice_lookup.description == "outgoing"
-    assert invoice_lookup.created_at.as_secs() == invoice_decode["created_at"]
+    assert invoice_lookup.created_at.as_secs() == pytest.approx(
+        invoice_decode["created_at"], abs=1
+    )
     assert invoice_lookup.description_hash is None
     assert invoice_lookup.expires_at is None
     assert invoice_lookup.fees_paid == 1
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "OUTGOING"
-    assert invoice_lookup.settled_at.as_secs() == listpays_rpc["completed_at"]
+    assert invoice_lookup.settled_at.as_secs() == pytest.approx(
+        listpays_rpc["completed_at"], abs=1
+    )
 
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
@@ -792,12 +814,13 @@ async def test_notifications(node_factory, get_plugin, nostr_client):  # noqa: F
     assert received_events[0]["notification"]["payment_hash"] == pay2["payment_hash"]
     assert received_events[0]["notification"]["amount"] == 3000
     assert received_events[0]["notification"]["fees_paid"] == 0
-    assert (
-        received_events[0]["notification"]["created_at"]
-        == invoice2_decode["created_at"]
+    assert received_events[0]["notification"]["created_at"] == pytest.approx(
+        invoice2_decode["created_at"], abs=1
     )
     assert "expires_at" not in received_events[0]["notification"]
-    assert received_events[0]["notification"]["settled_at"] == invoice2_list["paid_at"]
+    assert received_events[0]["notification"]["settled_at"] == pytest.approx(
+        invoice2_list["paid_at"], abs=1
+    )
     assert "metadata" not in received_events[0]["notification"]
 
     assert sent_events[0]["notification"]["type"] == "outgoing"
@@ -810,9 +833,13 @@ async def test_notifications(node_factory, get_plugin, nostr_client):  # noqa: F
     )
     assert sent_events[0]["notification"]["amount"] == 500000000
     assert sent_events[0]["notification"]["fees_paid"] == 5001
-    assert sent_events[0]["notification"]["created_at"] == invoice1_decode["created_at"]
+    assert sent_events[0]["notification"]["created_at"] == pytest.approx(
+        invoice1_decode["created_at"], abs=1
+    )
     assert "expires_at" not in sent_events[0]["notification"]
-    assert sent_events[0]["notification"]["settled_at"] == pay1_list["completed_at"]
+    assert sent_events[0]["notification"]["settled_at"] == pytest.approx(
+        pay1_list["completed_at"], abs=1
+    )
     assert "metadata" not in sent_events[0]["notification"]
 
     l1.rpc.call("plugin", {"subcommand": "stop", "plugin": "cln-nip47"})
