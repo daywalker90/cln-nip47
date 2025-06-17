@@ -1,47 +1,47 @@
-<table style="border: none; border-collapse: collapse;">
+<table style="border: none; border-collapse: collapse; outline: none; box-shadow: none;">
   <tr>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml/badge.svg?branch=main">
       </a>
     </td>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml/badge.svg?branch=main">
       </a>
     </td>
   </tr>
   <tr>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml/badge.svg?branch=main">
       </a>
     </td>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml/badge.svg?branch=main">
       </a>
     </td>
   </tr>
   <tr>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml/badge.svg?branch=main">
       </a>
     </td>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml/badge.svg?branch=main">
       </a>
     </td>
   </tr>
   <tr>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml/badge.svg?branch=main">
       </a>
     </td>
-    <td style="border: none; padding: 2px;">
+    <td style="border: none; outline: none; padding: 2px;">
       <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml">
         <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml/badge.svg?branch=main">
       </a>
