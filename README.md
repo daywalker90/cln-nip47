@@ -1,40 +1,46 @@
-<div style="display: grid; grid-template-columns: repeat(2, auto); gap: 4px;">
-  <div>
+<div style="display: flex; gap: 4px;">
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+</div>
+<div style="display: flex; gap: 4px;">
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+</div>
+<div style="display: flex; gap: 4px;">
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+</div>
+<div style="display: flex; gap: 4px;">
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml/badge.svg?branch=main">
     </a>
   </div>
-  <div>
+  <div style="display: inline-block;">
     <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml">
       <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml/badge.svg?branch=main">
     </a>
