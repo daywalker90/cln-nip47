@@ -1,9 +1,53 @@
-| | |
-|------------|------------|
-| [![](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml) | [![](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml) |
-| [![](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml) | [![](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml) |
-| [![](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml) | [![](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml) |
-| [![](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml) | [![](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml/badge.svg?branch=main)](https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml) |
+<table border="0">
+  <tr>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.08.yml/badge.svg?branch=main">
+      </a>
+    </td>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.08.yml/badge.svg?branch=main">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v24.11.yml/badge.svg?branch=main">
+      </a>
+    </td>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v24.11.yml/badge.svg?branch=main">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.02.yml/badge.svg?branch=main">
+      </a>
+    </td>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.02.yml/badge.svg?branch=main">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/latest_v25.05.yml/badge.svg?branch=main">
+      </a>
+    </td>
+    <td>
+      <a href="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml">
+        <img src="https://github.com/daywalker90/cln-nip47/actions/workflows/main_v25.05.yml/badge.svg?branch=main">
+      </a>
+    </td>
+  </tr>
+</table>
 
 
 # cln-nip47
