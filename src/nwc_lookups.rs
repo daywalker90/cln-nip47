@@ -173,59 +173,77 @@ pub async fn lookup_invoice(
         }
         let list_pay = pays.first().unwrap().clone();
         let invstring = if list_pay.bolt11.is_some() {
-            list_pay.bolt11.unwrap()
+            list_pay.bolt11
         } else {
-            list_pay.bolt12.unwrap()
+            list_pay.bolt12
         };
 
-        let invoice_decoded = rpc
-            .call_typed(&DecodeRequest {
-                string: invstring.clone(),
-            })
-            .await
-            .map_err(|e| nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            })?;
+        let invoice_decoded = if let Some(invstr) = &invstring {
+            Some(
+                rpc.call_typed(&DecodeRequest {
+                    string: invstr.clone(),
+                })
+                .await
+                .map_err(|e| nip47::NIP47Error {
+                    code: nip47::ErrorCode::Internal,
+                    message: e.to_string(),
+                })?,
+            )
+        } else {
+            None
+        };
 
-        if !invoice_decoded.valid {
+        if invoice_decoded.is_some() && !invoice_decoded.as_ref().unwrap().valid {
             return not_invoice_err;
         }
-        let description = match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                invoice_decoded.offer_description
-            }
-            cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => invoice_decoded.description,
-            _ => return not_invoice_err,
-        };
-        let description_hash = match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
-            cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                invoice_decoded.description_hash.map(|h| h.to_string())
-            }
-            _ => return not_invoice_err,
-        };
-        let amount = match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                invoice_decoded.invoice_amount_msat.unwrap().msat()
-            }
-            cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                if let Some(amt) = invoice_decoded.amount_msat {
-                    amt.msat()
-                } else if let Some(amt) = list_pay.amount_msat {
-                    amt.msat()
-                } else {
-                    return not_invoice_err;
+
+        let description_hash = if let Some(inv_dec) = &invoice_decoded {
+            match inv_dec.item_type {
+                cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
+                cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+                    inv_dec.description_hash.map(|h| h.to_string())
                 }
+                _ => return not_invoice_err,
             }
-            _ => return not_invoice_err,
+        } else {
+            None
         };
+        let amount = if let Some(amt) = list_pay.amount_msat {
+            amt.msat()
+        } else if let Some(inv_dec) = &invoice_decoded {
+            match inv_dec.item_type {
+                cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+                    inv_dec.invoice_amount_msat.unwrap().msat()
+                }
+                cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+                    if let Some(amt) = inv_dec.amount_msat {
+                        amt.msat()
+                    } else {
+                        return not_invoice_err;
+                    }
+                }
+                _ => return not_invoice_err,
+            }
+        } else {
+            return not_invoice_err;
+        };
+
+        let description = if let Some(inv_dec) = invoice_decoded {
+            match inv_dec.item_type {
+                cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => inv_dec.offer_description,
+                cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => inv_dec.description,
+                _ => return not_invoice_err,
+            }
+        } else {
+            list_pay.description
+        };
+
         let fees_paid = list_pay.amount_sent_msat.unwrap().msat() - amount;
         let preimage = list_pay.preimage.map(|p| hex::encode(p.to_vec()));
 
         Ok(nip47::LookupInvoiceResponse {
             transaction_type: Some(nip47::TransactionType::Outgoing),
-            invoice: Some(invstring),
+            invoice: invstring,
             description,
             description_hash,
             preimage,
@@ -408,61 +426,79 @@ pub async fn list_transactions(
                 continue;
             }
             let invstring = if list_pay.bolt11.is_some() {
-                list_pay.bolt11.unwrap()
+                list_pay.bolt11
             } else {
-                list_pay.bolt12.unwrap()
+                list_pay.bolt12
             };
 
-            let invoice_decoded = rpc
-                .call_typed(&DecodeRequest {
-                    string: invstring.clone(),
-                })
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Internal,
-                    message: e.to_string(),
-                })?;
+            let invoice_decoded = if let Some(invstr) = &invstring {
+                Some(
+                    rpc.call_typed(&DecodeRequest {
+                        string: invstr.clone(),
+                    })
+                    .await
+                    .map_err(|e| nip47::NIP47Error {
+                        code: nip47::ErrorCode::Internal,
+                        message: e.to_string(),
+                    })?,
+                )
+            } else {
+                None
+            };
 
-            if !invoice_decoded.valid {
+            if invoice_decoded.is_some() && !invoice_decoded.as_ref().unwrap().valid {
                 continue;
             }
-            let description = match invoice_decoded.item_type {
-                cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                    invoice_decoded.offer_description
-                }
-                cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                    invoice_decoded.description
-                }
-                _ => continue,
-            };
-            let description_hash = match invoice_decoded.item_type {
-                cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
-                cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                    invoice_decoded.description_hash.map(|h| h.to_string())
-                }
-                _ => continue,
-            };
-            let amount = match invoice_decoded.item_type {
-                cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                    invoice_decoded.invoice_amount_msat.unwrap().msat()
-                }
-                cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                    if let Some(amt) = invoice_decoded.amount_msat {
-                        amt.msat()
-                    } else if let Some(amt) = list_pay.amount_msat {
-                        amt.msat()
-                    } else {
-                        continue;
+
+            let description_hash = if let Some(inv_dec) = &invoice_decoded {
+                match inv_dec.item_type {
+                    cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
+                    cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+                        inv_dec.description_hash.map(|h| h.to_string())
                     }
+                    _ => continue,
                 }
-                _ => continue,
+            } else {
+                None
             };
+            let amount = if let Some(amt) = list_pay.amount_msat {
+                amt.msat()
+            } else if let Some(inv_dec) = &invoice_decoded {
+                match inv_dec.item_type {
+                    cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+                        inv_dec.invoice_amount_msat.unwrap().msat()
+                    }
+                    cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+                        if let Some(amt) = inv_dec.amount_msat {
+                            amt.msat()
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => continue,
+                }
+            } else {
+                continue;
+            };
+
+            let description = if let Some(inv_dec) = invoice_decoded {
+                match inv_dec.item_type {
+                    cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+                        inv_dec.offer_description
+                    }
+                    cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => inv_dec.description,
+                    _ => continue,
+                }
+            } else {
+                list_pay.description
+            };
+
             let fees_paid = list_pay.amount_sent_msat.unwrap().msat() - amount;
             let preimage = list_pay.preimage.map(|p| hex::encode(p.to_vec()));
 
             transactions.push(nip47::LookupInvoiceResponse {
                 transaction_type: Some(nip47::TransactionType::Outgoing),
-                invoice: Some(invstring),
+                invoice: invstring,
                 description,
                 description_hash,
                 preimage,
