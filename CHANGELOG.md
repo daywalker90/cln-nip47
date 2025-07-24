@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.4] 2025-07-24
+
+### Fixed
+- no longer panic on missing both bolt11 and bolt12 strings from listpays response
+
 ## [0.1.3] 2025-05-04
 
 ### Changed
