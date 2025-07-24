@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.5] 2025-07-24
+
+### Changed
+
+- cap `list_transactions` to under 128kB since more can lead to incompatibilities with certain wallets
+
 ## [0.1.4] 2025-07-24
 
 ### Fixed
