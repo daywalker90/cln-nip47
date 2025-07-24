@@ -520,6 +520,36 @@ pub async fn list_transactions(
             transactions = transactions.drain(0..(l as usize)).collect()
         }
     }
+    transactions = trim_to_size(transactions, 127 * 1024);
 
     Ok(transactions)
+}
+
+fn trim_to_size(
+    mut transactions: Vec<nip47::LookupInvoiceResponse>,
+    max_size: usize,
+) -> Vec<nip47::LookupInvoiceResponse> {
+    let length_before = transactions.len();
+    while !transactions.is_empty() {
+        match serde_json::to_vec(&transactions) {
+            Ok(serialized) => {
+                if serialized.len() <= max_size {
+                    log::info!(
+                        "Trimmed {} transactions to stay under {}bytes",
+                        length_before - transactions.len(),
+                        max_size
+                    );
+                    return transactions;
+                } else {
+                    transactions.pop();
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to serialize transactions: {}", e);
+                return transactions;
+            }
+        }
+    }
+
+    Vec::new()
 }
