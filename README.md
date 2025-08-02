@@ -137,10 +137,14 @@ For a private relay you can for example use [nostr-rs-relay](https://github.com/
 * ``list_transactions``
 * ``get_balance``
 * ``get_info`` (no ``block_hash``)
+* ``make_hold_invoice`` (requires [holdinvoice v5](https://github.com/daywalker90/holdinvoice))
+* ``cancel_hold_invoice`` (requires [holdinvoice v5](https://github.com/daywalker90/holdinvoice))
+* ``settle_hold_invoice`` (requires [holdinvoice v5](https://github.com/daywalker90/holdinvoice))
 
 ## Supported NWC notifications
 * ``payment_received``
 * ``payment_sent``
+* ``hold_invoice_accepted``  (requires [holdinvoice v5](https://github.com/daywalker90/holdinvoice))
 
 ## Supported content encryption:
 * [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md)

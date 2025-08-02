@@ -135,7 +135,14 @@ pub async fn pay_invoice(
                 }
 
                 let preimage = hex::encode(o.payment_preimage.to_vec());
-                Ok((nip47::PayInvoiceResponse { preimage }, id))
+                let fees_paid = o.amount_sent_msat.msat() - o.amount_msat.msat();
+                Ok((
+                    nip47::PayInvoiceResponse {
+                        preimage,
+                        fees_paid: Some(fees_paid),
+                    },
+                    id,
+                ))
             }
             Err(e) => match e.code {
                 Some(c) => match c {
@@ -206,7 +213,14 @@ pub async fn pay_invoice(
                 }
 
                 let preimage = hex::encode(o.payment_preimage.to_vec());
-                Ok((nip47::PayInvoiceResponse { preimage }, id))
+                let fees_paid = o.amount_sent_msat.msat() - o.amount_msat.msat();
+                Ok((
+                    nip47::PayInvoiceResponse {
+                        preimage,
+                        fees_paid: Some(fees_paid),
+                    },
+                    id,
+                ))
             }
             Err(e) => match e.code {
                 Some(c) => match c {
