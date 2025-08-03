@@ -131,6 +131,7 @@ pub async fn payment_received_handler(
                 expires_at: None,
                 settled_at,
                 metadata: None,
+                state: nip47::TransactionState::Settled,
             }),
         };
         let notification = serde_json::to_string(&content)?;
@@ -307,6 +308,7 @@ pub async fn payment_sent_handler(
                 expires_at: None,
                 settled_at,
                 metadata: None,
+                state: nip47::TransactionState::Settled,
             }),
         };
         let notification = serde_json::to_string(&content)?;

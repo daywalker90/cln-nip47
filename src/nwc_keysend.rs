@@ -88,7 +88,11 @@ pub async fn pay_keysend(
             }
 
             let preimage = hex::encode(o.payment_preimage.to_vec());
-            Ok(nip47::PayKeysendResponse { preimage })
+            let fees_paid = o.amount_sent_msat.msat() - o.amount_msat.msat();
+            Ok(nip47::PayKeysendResponse {
+                preimage,
+                fees_paid: Some(fees_paid),
+            })
         }
         Err(e) => match e.code {
             Some(c) => match c {

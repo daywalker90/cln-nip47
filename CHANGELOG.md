@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- new `state` field in transaction responses
+- include pending and failed payments in ``list_transactions``
+- include expired invoices in ``list_transactions``
+- missing fields for ``make_invoice`` response
+- new `fees_paid` field in ``pay_keysend``/``multi_pay_keysend``
+
 ## [0.1.5] 2025-07-24
 
 ### Changed
