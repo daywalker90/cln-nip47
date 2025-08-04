@@ -511,10 +511,7 @@ pub async fn list_transactions(
                 })?;
 
             for holdinvoice in holdinvoices.holdinvoices.into_iter() {
-                if !unpaid
-                    && (holdinvoice.state == Holdstate::Open
-                        || holdinvoice.state == Holdstate::Canceled)
-                {
+                if !unpaid && holdinvoice.state != Holdstate::Settled {
                     continue;
                 }
 
