@@ -5,8 +5,9 @@ use cln_plugin::Plugin;
 use cln_rpc::model::requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest};
 use cln_rpc::model::responses::ListpaysPaysStatus;
 use cln_rpc::primitives::Sha256;
+use serde_json::json;
 
-use crate::structs::PluginState;
+use crate::structs::{HoldLookupResponse, PluginState};
 use crate::OPT_NOTIFICATIONS;
 
 use nostr_sdk::nips::*;
@@ -131,6 +132,7 @@ pub async fn payment_received_handler(
                 expires_at: None,
                 settled_at,
                 metadata: None,
+                state: nip47::TransactionState::Settled,
             }),
         };
         let notification = serde_json::to_string(&content)?;
@@ -307,6 +309,7 @@ pub async fn payment_sent_handler(
                 expires_at: None,
                 settled_at,
                 metadata: None,
+                state: nip47::TransactionState::Settled,
             }),
         };
         let notification = serde_json::to_string(&content)?;
@@ -348,5 +351,97 @@ pub async fn payment_sent_handler(
         log::debug!("NIP44 NOTIFICATION SENT: {:?}", event_nip44);
     }
 
+    Ok(())
+}
+
+pub async fn holdinvoice_accepted_handler(
+    plugin: Plugin<PluginState>,
+    args: serde_json::Value,
+) -> Result<(), anyhow::Error> {
+    let payload = args
+        .get("payload")
+        .ok_or_else(|| anyhow!("Malformed holdinvoice_accepted notification: missing payload"))?;
+    let payment_hash = payload
+        .get("payment_hash")
+        .ok_or_else(|| {
+            anyhow!("Malformed holdinvoice_accepted notification: missing payment_hash")
+        })?
+        .as_str()
+        .ok_or_else(|| anyhow!("payment_hash is not a string"))?
+        .to_owned();
+
+    let mut rpc = plugin.state().rpc_lock.lock().await;
+
+    let hold_lookup_response: HoldLookupResponse = rpc
+        .call_raw("holdinvoicelookup", &json!({"payment_hash":payment_hash}))
+        .await?;
+
+    let hold_lookup = hold_lookup_response
+        .holdinvoices
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("holdinvoicelookup returned no holdinvoices"))?;
+
+    let clients = plugin.state().handles.lock().await;
+
+    for (client, client_pubkey) in clients.values() {
+        let signer = client.signer().await.unwrap();
+        let content = nip47::Notification {
+            notification_type: nip47::NotificationType::HoldInvoiceAccepted,
+            notification: nip47::NotificationResult::HoldInvoiceAccepted(
+                nip47::HoldInvoiceAcceptedNotification {
+                    transaction_type: nip47::TransactionType::Incoming,
+                    invoice: hold_lookup.bolt11.clone(),
+                    description: hold_lookup.description.clone(),
+                    description_hash: hold_lookup.description_hash.clone(),
+                    payment_hash: hold_lookup.payment_hash.clone(),
+                    amount: hold_lookup.amount_msat,
+                    created_at: Timestamp::from_secs(hold_lookup.created_at),
+                    expires_at: Timestamp::from_secs(hold_lookup.expires_at),
+                    settle_deadline: hold_lookup
+                        .htlc_expiry
+                        .ok_or_else(|| anyhow!("Accepted holdinvoice missing htlc_expiry"))?,
+                    metadata: None,
+                },
+            ),
+        };
+        let notification = serde_json::to_string(&content).unwrap();
+        log::debug!("NOTIFICATION: {}", notification);
+        let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, &notification).await?;
+        let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
+            .tag(Tag::public_key(*client_pubkey))
+            .sign(&signer)
+            .await?;
+        let nip04_result = client.send_event(&event_nip04).await?;
+        if nip04_result.success.is_empty() {
+            log::warn!(
+                "None of the relays accepted our nip04 notification: {}",
+                nip04_result
+                    .failed
+                    .into_values()
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+        }
+        log::debug!("NIP04 NOTIFICATION SENT: {:?}", event_nip04);
+
+        let content_encrypted_nip44 = signer.nip44_encrypt(client_pubkey, &notification).await?;
+        let event_nip44 = EventBuilder::new(Kind::from_u16(23197), content_encrypted_nip44)
+            .tag(Tag::public_key(*client_pubkey))
+            .sign(&signer)
+            .await?;
+        let nip44_result = client.send_event(&event_nip44).await?;
+        if nip44_result.success.is_empty() {
+            log::warn!(
+                "None of the relays accepted our nip44 notification: {}",
+                nip44_result
+                    .failed
+                    .into_values()
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+        }
+        log::debug!("NIP44 NOTIFICATION SENT: {:?}", event_nip44);
+    }
     Ok(())
 }

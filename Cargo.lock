@@ -251,9 +251,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.30"
+version = "1.2.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "deec109607ca693028562ed836a5f1c4b8bd77755c4e132fc5ce11b0b6211ae7"
+checksum = "c3a42d84bb6b69d3a8b3eaacf0d88f179e1929695e1ad012b6cf64d9caaa5fd2"
 dependencies = [
  "shlex",
 ]
@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "cln-nip47"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "cln-plugin",
@@ -852,9 +852,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.14.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f8cc7106155f10bdf99a6f379688f543ad6596a415375b36a59a054ceda1198"
+checksum = "86ea4e65087ff52f3862caff188d489f1fab49a0cb09e01b2e3f1a617b10aaed"
 
 [[package]]
 name = "matchers"
@@ -899,9 +899,8 @@ checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
 
 [[package]]
 name = "nostr"
-version = "0.42.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d193102a62a22b61f9a61b9df54fb19ebab8c1763d088fbb9a6f0f57000fba2d"
+version = "0.43.0"
+source = "git+https://github.com/rust-nostr/nostr.git?rev=8efa2640058ea94540f050fa900f9f85144d9eba#8efa2640058ea94540f050fa900f9f85144d9eba"
 dependencies = [
  "aes",
  "base64",
@@ -913,7 +912,6 @@ dependencies = [
  "chacha20poly1305",
  "getrandom 0.2.16",
  "instant",
- "regex",
  "scrypt",
  "secp256k1 0.29.1",
  "serde",
@@ -924,9 +922,8 @@ dependencies = [
 
 [[package]]
 name = "nostr-database"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6aafe85dc7c039c399796043b76009fa744c3a45ac073a023932f7b7d91b1e7"
+version = "0.43.0"
+source = "git+https://github.com/rust-nostr/nostr.git?rev=8efa2640058ea94540f050fa900f9f85144d9eba#8efa2640058ea94540f050fa900f9f85144d9eba"
 dependencies = [
  "lru",
  "nostr",
@@ -935,9 +932,8 @@ dependencies = [
 
 [[package]]
 name = "nostr-relay-pool"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df4d5628d2444349570fb185b0c2d92cfdb7e68d62b13bf3e8a4348b5de7430b"
+version = "0.43.0"
+source = "git+https://github.com/rust-nostr/nostr.git?rev=8efa2640058ea94540f050fa900f9f85144d9eba#8efa2640058ea94540f050fa900f9f85144d9eba"
 dependencies = [
  "async-utility",
  "async-wsocket",
@@ -952,16 +948,14 @@ dependencies = [
 
 [[package]]
 name = "nostr-sdk"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e928ba9ac2695fbe10b8aefda59f2abfeb23c10a0e86a0b3e0f6a27bb274a2"
+version = "0.43.0"
+source = "git+https://github.com/rust-nostr/nostr.git?rev=8efa2640058ea94540f050fa900f9f85144d9eba#8efa2640058ea94540f050fa900f9f85144d9eba"
 dependencies = [
  "async-utility",
  "nostr",
  "nostr-database",
  "nostr-relay-pool",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -1168,9 +1162,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.5.15"
+version = "0.5.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e8af0dde094006011e6a740d4879319439489813bd0bcdc7d821beaeeff48ec"
+checksum = "5407465600fb0548f1442edf71dd20683c6ed326200ace4b1ef0763521bb3b77"
 dependencies = [
  "bitflags",
 ]
@@ -1235,15 +1229,15 @@ dependencies = [
 
 [[package]]
 name = "rustc-demangle"
-version = "0.1.25"
+version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "989e6739f80c4ad5b13e0fd7fe89531180375b18520cc8c82080e4dc4035b84f"
+checksum = "56f7d92ca342cea22a06f2121d944b4fd82af56988c270852495420f961d4ace"
 
 [[package]]
 name = "rustls"
-version = "0.23.29"
+version = "0.23.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2491382039b29b9b11ff08b76ff6c97cf287671dbb74f0be44bda389fffe9bd1"
+checksum = "c0ebcbd2f03de0fc1122ad9bb24b127a5a6cd51d72604a3f3c50ac459762b6cc"
 dependencies = [
  "once_cell",
  "ring",
@@ -1374,9 +1368,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.141"
+version = "1.0.142"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b9eff21ebe718216c6ec64e1d9ac57087aad11efc64e32002bce4a0d4c03d3"
+checksum = "030fedb782600dcbd6f02d479bf0d817ac3bb40d644745b769d6a96bc3afc5a7"
 dependencies = [
  "itoa",
  "memchr",
@@ -1435,12 +1429,12 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "socket2"
-version = "0.5.10"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
+checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1553,9 +1547,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.46.1"
+version = "1.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc3a2344dafbe23a245241fe8b09735b521110d30fcefbbd5feb1797ca35d17"
+checksum = "89e49afdadebb872d3145a5638b59eb0691ea23e46ca484037cfab3b76b95038"
 dependencies = [
  "backtrace",
  "bytes",
@@ -1566,7 +1560,7 @@ dependencies = [
  "slab",
  "socket2",
  "tokio-macros",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1631,9 +1625,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.15"
+version = "0.7.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
+checksum = "14307c986784f72ef81c89db7d9e28d6ac26d16213b109ea501696195e6e3ce5"
 dependencies = [
  "bytes",
  "futures-core",

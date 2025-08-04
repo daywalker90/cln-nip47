@@ -10,6 +10,8 @@ RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
 COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / "cln-nip47"
 DOWNLOAD_PATH = Path.cwd() / "tests" / "cln-nip47"
 
+DOWNLOAD_HOLD_PATH = Path.cwd() / "tests" / "holdinvoice"
+
 
 @pytest.fixture
 def get_plugin(directory):
@@ -17,6 +19,14 @@ def get_plugin(directory):
         return COMPILED_PATH
     elif DOWNLOAD_PATH.is_file():
         return DOWNLOAD_PATH
+    else:
+        raise ValueError("No files were found.")
+
+
+@pytest.fixture
+def get_holdinvoice(directory):
+    if DOWNLOAD_HOLD_PATH.is_file():
+        return DOWNLOAD_HOLD_PATH
     else:
         raise ValueError("No files were found.")
 
@@ -33,12 +43,28 @@ def generate_random_number():
     return random.randint(1, 20_000_000_000_000_00_000)
 
 
-def pay_with_thread(rpc, bolt11):
+def xpay_with_thread(node, bolt11, partial_msat=None):
     LOGGER = logging.getLogger(__name__)
     try:
-        rpc.dev_pay(bolt11, dev_use_shadow=False)
+        if partial_msat:
+            node.rpc.call(
+                "xpay",
+                {
+                    "invstring": bolt11,
+                    "retry_for": 20,
+                    "partial_msat": partial_msat,
+                },
+            )
+        else:
+            node.rpc.call(
+                "xpay",
+                {
+                    "invstring": bolt11,
+                    "retry_for": 20,
+                },
+            )
     except Exception as e:
-        LOGGER.info(f"holdinvoice: Error paying payment hash:{e}")
+        LOGGER.info(f"Error paying payment hash:{e}")
         pass
 
 
