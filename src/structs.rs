@@ -1,5 +1,6 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc};
 
+use anyhow::{anyhow, Error};
 use cln_rpc::{primitives::ShortChannelId, ClnRpc};
 use nostr_sdk::client;
 use nostr_sdk::nips::nip47;
@@ -114,7 +115,7 @@ pub struct HoldInvoiceResponse {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description_hash: Option<String>,
-    pub state: String,
+    pub state: Holdstate,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub htlc_expiry: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,4 +132,35 @@ where
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HoldLookupResponse {
     pub holdinvoices: Vec<HoldInvoiceResponse>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum Holdstate {
+    Open,
+    Settled,
+    Canceled,
+    Accepted,
+}
+impl fmt::Display for Holdstate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Holdstate::Open => write!(f, "OPEN"),
+            Holdstate::Settled => write!(f, "SETTLED"),
+            Holdstate::Canceled => write!(f, "CANCELED"),
+            Holdstate::Accepted => write!(f, "ACCEPTED"),
+        }
+    }
+}
+impl FromStr for Holdstate {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "open" => Ok(Holdstate::Open),
+            "settled" => Ok(Holdstate::Settled),
+            "canceled" => Ok(Holdstate::Canceled),
+            "accepted" => Ok(Holdstate::Accepted),
+            _ => Err(anyhow!("could not parse Holdstate from {}", s)),
+        }
+    }
 }

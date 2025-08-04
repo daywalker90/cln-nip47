@@ -6,7 +6,7 @@
 - methods and notification related to holdinvoices
 - new `state` field in transaction responses
 - include pending and failed payments in ``list_transactions``
-- include expired invoices in ``list_transactions``
+- include expired invoices in ``list_transactions`` unless `unpaid` is set
 - missing fields for ``make_invoice`` response
 - new `fees_paid` field in ``pay_keysend``/``multi_pay_keysend``
 

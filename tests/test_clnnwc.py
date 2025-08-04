@@ -1477,6 +1477,7 @@ async def test_hold_invoice(node_factory, get_plugin, get_holdinvoice, nostr_cli
     for content in success_events:
         assert content["result_type"] == "make_hold_invoice"
         assert content["result"]["payment_hash"] == payment_hash
+        bolt11_canceled = content["result"]["invoice"]
 
     threading.Thread(
         target=xpay_with_thread, args=(l1, success_events[0]["result"]["invoice"])
@@ -1559,6 +1560,36 @@ async def test_hold_invoice(node_factory, get_plugin, get_holdinvoice, nostr_cli
         ]
         == "failed"
     )
+
+    nwc = Nwc(uri)
+
+    invoice_lookup = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=payment_hash,
+            invoice=None,
+        )
+    )
+    assert invoice_lookup.payment_hash == payment_hash
+
+    invoice_lookup = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=None,
+            invoice=bolt11_canceled,
+        )
+    )
+    assert invoice_lookup.payment_hash == payment_hash
+
+    result = await nwc.list_transactions(
+        ListTransactionsRequest(
+            _from=None,
+            until=None,
+            limit=None,
+            offset=None,
+            unpaid=True,
+            transaction_type=None,
+        )
+    )
+    assert len(result) == 2
 
 
 @pytest_asyncio.fixture(scope="function")

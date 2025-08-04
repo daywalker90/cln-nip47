@@ -378,7 +378,8 @@ pub async fn holdinvoice_accepted_handler(
 
     let hold_lookup = hold_lookup_response
         .holdinvoices
-        .first()
+        .into_iter()
+        .next()
         .ok_or_else(|| anyhow!("holdinvoicelookup returned no holdinvoices"))?;
 
     let clients = plugin.state().handles.lock().await;
