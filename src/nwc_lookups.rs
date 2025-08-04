@@ -674,6 +674,14 @@ pub async fn list_transactions(
 
     transactions.sort_by_key(|t| Reverse(t.created_at));
 
+    if let Some(off) = params.offset.map(|o| o as usize) {
+        if off < transactions.len() {
+            transactions.drain(0..off);
+        } else {
+            transactions.clear();
+        }
+    }
+
     if let Some(l) = params.limit {
         if transactions.len() > (l as usize) {
             transactions = transactions.drain(0..(l as usize)).collect()
