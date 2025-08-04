@@ -6,10 +6,7 @@ use nostr_sdk::nips::*;
 use nostr_sdk::nostr::types::time::Timestamp;
 use serde_json::json;
 
-use crate::{
-    structs::{HoldInvoiceRequest, HoldInvoiceResponse, PluginState},
-    tasks::hold_invoice_watcher,
-};
+use crate::structs::{HoldInvoiceRequest, HoldInvoiceResponse, PluginState};
 
 pub async fn make_hold_invoice(
     plugin: Plugin<PluginState>,
@@ -70,7 +67,6 @@ pub async fn make_hold_invoice(
                 metadata: None,
                 payment_hash: o.payment_hash.to_string(),
             };
-            tokio::spawn(hold_invoice_watcher(plugin.clone(), response.clone()));
             Ok(response)
         }
         Err(e) => Err(nip47::NIP47Error {

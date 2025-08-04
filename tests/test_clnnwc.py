@@ -1289,6 +1289,7 @@ async def test_hold_invoice(node_factory, get_plugin, get_holdinvoice, nostr_cli
                 "log-level": "debug",
                 "plugin": [get_plugin, get_holdinvoice],
                 "nip47-relays": f"ws://{url}",
+                "holdinvoice-startup-lock": 0,
             },
         ],
     )

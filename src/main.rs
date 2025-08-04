@@ -17,6 +17,8 @@ use structs::PluginState;
 use tokio::time;
 use util::{at_or_above_version, load_nwc_store, update_nwc_store};
 
+use crate::nwc_notifications::holdinvoice_accepted_handler;
+
 mod nwc;
 mod nwc_balance;
 mod nwc_hold;
@@ -88,6 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .subscribe("shutdown", shutdown_handler)
         .subscribe("invoice_payment", payment_received_handler)
         .subscribe("sendpay_success", payment_sent_handler)
+        .subscribe("holdinvoice_accepted", holdinvoice_accepted_handler)
         .dynamic()
         .configure()
         .await?

@@ -5,8 +5,9 @@ use cln_plugin::Plugin;
 use cln_rpc::model::requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest};
 use cln_rpc::model::responses::ListpaysPaysStatus;
 use cln_rpc::primitives::Sha256;
+use serde_json::json;
 
-use crate::structs::PluginState;
+use crate::structs::{HoldLookupResponse, PluginState};
 use crate::OPT_NOTIFICATIONS;
 
 use nostr_sdk::nips::*;
@@ -353,11 +354,33 @@ pub async fn payment_sent_handler(
     Ok(())
 }
 
-pub async fn hold_invoice_accepted_notification(
+pub async fn holdinvoice_accepted_handler(
     plugin: Plugin<PluginState>,
-    hold_htlc_expiry: u32,
-    response: nip47::MakeHoldInvoiceResponse,
+    args: serde_json::Value,
 ) -> Result<(), anyhow::Error> {
+    let payload = args
+        .get("payload")
+        .ok_or_else(|| anyhow!("Malformed holdinvoice_accepted notification: missing payload"))?;
+    let payment_hash = payload
+        .get("payment_hash")
+        .ok_or_else(|| {
+            anyhow!("Malformed holdinvoice_accepted notification: missing payment_hash")
+        })?
+        .as_str()
+        .ok_or_else(|| anyhow!("payment_hash is not a string"))?
+        .to_owned();
+
+    let mut rpc = plugin.state().rpc_lock.lock().await;
+
+    let hold_lookup_response: HoldLookupResponse = rpc
+        .call_raw("holdinvoicelookup", &json!({"payment_hash":payment_hash}))
+        .await?;
+
+    let hold_lookup = hold_lookup_response
+        .holdinvoices
+        .first()
+        .ok_or_else(|| anyhow!("holdinvoicelookup returned no holdinvoices"))?;
+
     let clients = plugin.state().handles.lock().await;
 
     for (client, client_pubkey) in clients.values() {
@@ -367,14 +390,16 @@ pub async fn hold_invoice_accepted_notification(
             notification: nip47::NotificationResult::HoldInvoiceAccepted(
                 nip47::HoldInvoiceAcceptedNotification {
                     transaction_type: nip47::TransactionType::Incoming,
-                    invoice: response.invoice.clone().unwrap(),
-                    description: response.description.clone(),
-                    description_hash: response.description_hash.clone(),
-                    payment_hash: response.payment_hash.clone(),
-                    amount: response.amount,
-                    created_at: response.created_at,
-                    expires_at: response.expires_at,
-                    settle_deadline: hold_htlc_expiry,
+                    invoice: hold_lookup.bolt11.clone(),
+                    description: hold_lookup.description.clone(),
+                    description_hash: hold_lookup.description_hash.clone(),
+                    payment_hash: hold_lookup.payment_hash.clone(),
+                    amount: hold_lookup.amount_msat,
+                    created_at: Timestamp::from_secs(hold_lookup.created_at),
+                    expires_at: Timestamp::from_secs(hold_lookup.expires_at),
+                    settle_deadline: hold_lookup
+                        .htlc_expiry
+                        .ok_or_else(|| anyhow!("Accepted holdinvoice missing htlc_expiry"))?,
                     metadata: None,
                 },
             ),

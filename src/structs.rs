@@ -1,9 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
-use cln_rpc::{
-    primitives::{Secret, Sha256, ShortChannelId},
-    ClnRpc,
-};
+use cln_rpc::{primitives::ShortChannelId, ClnRpc};
 use nostr_sdk::client;
 use nostr_sdk::nips::nip47;
 use nostr_sdk::nostr;
@@ -106,15 +103,22 @@ pub struct HoldInvoiceRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HoldInvoiceResponse {
     pub bolt11: String,
-    pub payment_hash: Sha256,
-    pub payment_secret: Secret,
+    pub amount_msat: u64,
+    pub payment_hash: String,
+    pub payment_secret: String,
+    pub created_at: u64,
     pub expires_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub preimage: Option<Sha256>,
+    pub preimage: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description_hash: Option<Sha256>,
+    pub description_hash: Option<String>,
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub htlc_expiry: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paid_at: Option<u64>,
 }
 
 fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
@@ -122,4 +126,9 @@ where
     T: Clone,
 {
     f.as_ref().map_or(true, |value| value.is_empty())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldLookupResponse {
+    pub holdinvoices: Vec<HoldInvoiceResponse>,
 }
