@@ -1,4 +1,4 @@
 pytest-asyncio<0.24
-nostr-sdk
+nostr-sdk>=0.43
 PyYAML
 nostr_relay

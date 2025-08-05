@@ -23,6 +23,7 @@ if sys.version_info >= (3, 9):
     from nostr_sdk import (
         Alphabet,
         Client,
+        RelayUrl,
         EventBuilder,
         Filter,
         Keys,
@@ -152,7 +153,7 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
 
     signer = NostrSigner.keys(Keys(uri.secret()))
     client = Client(signer)
-    await client.add_relay(f"ws://{url}")
+    await client.add_relay(RelayUrl.parse(f"ws://{url}"))
     await client.connect()
 
     response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
@@ -184,7 +185,7 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
 
     signer = NostrSigner.keys(Keys(uri.secret()))
     client = Client(signer)
-    await client.add_relay(f"ws://{url}")
+    await client.add_relay(RelayUrl.parse(f"ws://{url}"))
     await client.connect()
 
     response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
@@ -364,7 +365,7 @@ async def test_multi_keysend(node_factory, get_plugin, nostr_client):  # noqa: F
         .sign(signer)
     )
     client = Client(signer)
-    await client.add_relay(f"ws://{url}")
+    await client.add_relay(RelayUrl.parse(f"ws://{url}"))
     await client.connect()
     await client.send_event(event)
 
@@ -386,7 +387,7 @@ async def test_multi_keysend(node_factory, get_plugin, nostr_client):  # noqa: F
         .sign(signer)
     )
     client = Client(signer)
-    await client.add_relay(f"ws://{url}")
+    await client.add_relay(RelayUrl.parse(f"ws://{url}"))
     await client.connect()
     await client.send_event(event)
 
@@ -979,7 +980,7 @@ async def test_multi_pay(node_factory, get_plugin, nostr_client):  # noqa: F811
         .sign(signer)
     )
     client = Client(signer)
-    await client.add_relay(f"ws://{url}")
+    await client.add_relay(RelayUrl.parse(f"ws://{url}"))
     await client.connect()
     await client.send_event(event)
 
@@ -1219,7 +1220,7 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
 
     signer = NostrSigner.keys(Keys(uri.secret()))
     client = Client(signer)
-    await client.add_relay(f"ws://{url}")
+    await client.add_relay(RelayUrl.parse(f"ws://{url}"))
     await client.connect()
 
     response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
@@ -1276,7 +1277,7 @@ async def nostr_client(nostr_relay):
 
     client = Client(signer)
 
-    relay_url = f"ws://127.0.0.1:{port}"
+    relay_url = RelayUrl.parse(f"ws://127.0.0.1:{port}")
     await client.add_relay(relay_url)
     await client.connect()
 
