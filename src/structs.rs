@@ -1,6 +1,7 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc};
 
-use cln_rpc::ClnRpc;
+use anyhow::{anyhow, Error};
+use cln_rpc::{primitives::ShortChannelId, ClnRpc};
 use nostr_sdk::client;
 use nostr_sdk::nips::nip47;
 use nostr_sdk::nostr;
@@ -30,12 +31,14 @@ impl PluginState {
 pub struct Config {
     pub relays: Vec<nostr_sdk::RelayUrl>,
     pub my_cln_version: String,
+    pub hold_invoice_support: bool,
 }
 impl Config {
     pub fn default() -> Config {
         Config {
             relays: Vec::new(),
             my_cln_version: String::new(),
+            hold_invoice_support: false,
         }
     }
 }
@@ -78,4 +81,86 @@ pub struct NwcStore {
     pub budget_msat: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_config: Option<BudgetIntervalConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoldInvoiceRequest {
+    pub amount_msat: u64,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiry: Option<u64>,
+    #[serde(skip_serializing_if = "is_none_or_empty")]
+    pub exposeprivatechannels: Option<Vec<ShortChannelId>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cltv: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deschashonly: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoldInvoiceResponse {
+    pub bolt11: String,
+    pub amount_msat: u64,
+    pub payment_hash: String,
+    pub payment_secret: String,
+    pub created_at: u64,
+    pub expires_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_hash: Option<String>,
+    pub state: Holdstate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub htlc_expiry: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paid_at: Option<u64>,
+}
+
+fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
+where
+    T: Clone,
+{
+    f.as_ref().map_or(true, |value| value.is_empty())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldLookupResponse {
+    pub holdinvoices: Vec<HoldInvoiceResponse>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum Holdstate {
+    Open,
+    Settled,
+    Canceled,
+    Accepted,
+}
+impl fmt::Display for Holdstate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Holdstate::Open => write!(f, "OPEN"),
+            Holdstate::Settled => write!(f, "SETTLED"),
+            Holdstate::Canceled => write!(f, "CANCELED"),
+            Holdstate::Accepted => write!(f, "ACCEPTED"),
+        }
+    }
+}
+impl FromStr for Holdstate {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "open" => Ok(Holdstate::Open),
+            "settled" => Ok(Holdstate::Settled),
+            "canceled" => Ok(Holdstate::Canceled),
+            "accepted" => Ok(Holdstate::Accepted),
+            _ => Err(anyhow!("could not parse Holdstate from {}", s)),
+        }
+    }
 }

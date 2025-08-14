@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::nwc_balance::get_balance;
+use crate::nwc_hold::{cancel_hold_invoice, make_hold_invoice, settle_hold_invoice};
 use crate::nwc_info::get_info;
 use crate::nwc_invoice::make_invoice;
 use crate::nwc_keysend::{multi_pay_keysend, pay_keysend};
@@ -8,8 +9,8 @@ use crate::nwc_lookups::{list_transactions, lookup_invoice};
 use crate::nwc_pay::{multi_pay_invoice, pay_invoice};
 use crate::structs::{NwcStore, PluginState};
 use crate::tasks::budget_task;
-use crate::util::is_read_only_nwc;
-use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
+use crate::util::{build_capabilities, is_read_only_nwc};
+use crate::OPT_NOTIFICATIONS;
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use nostr_sdk::nips::*;
@@ -23,11 +24,8 @@ pub async fn run_nwc(
     label: String,
     nwc_store: NwcStore,
 ) -> Result<(), client::Error> {
-    let capabilities = if is_read_only_nwc(&nwc_store) {
-        WALLET_READ_METHODS.join(" ")
-    } else {
-        WALLET_ALL_METHODS.join(" ")
-    };
+    let hold_support = plugin.state().config.lock().hold_invoice_support;
+    let is_read_only = is_read_only_nwc(&nwc_store);
 
     let wallet_keys = Keys::new(
         SecretKey::from_hex(&nwc_store.walletkey)
@@ -79,7 +77,8 @@ pub async fn run_nwc(
             if let Err(e) = send_nwc_info_event(
                 client_clone.clone(),
                 plugin_clone.option(&OPT_NOTIFICATIONS).unwrap(),
-                capabilities.clone(),
+                is_read_only,
+                hold_support,
                 wallet_keys.clone(),
             )
             .await
@@ -138,16 +137,19 @@ pub async fn run_nwc(
 
 pub async fn send_nwc_info_event(
     client: Client,
-    notifications: bool,
-    capabilities: String,
+    send_notifications: bool,
+    is_read_only: bool,
+    holdinvoice_support: bool,
     wallet_keys: Keys,
 ) -> Result<(), anyhow::Error> {
-    let mut info_event_builder = EventBuilder::new(Kind::WalletConnectInfo, capabilities.clone())
+    let (methods, notifications) = build_capabilities(is_read_only, holdinvoice_support);
+
+    let mut info_event_builder = EventBuilder::new(Kind::WalletConnectInfo, methods)
         .tag(Tag::parse(vec!["encryption", "nip44_v2 nip04"]).unwrap());
 
-    if notifications {
-        info_event_builder = info_event_builder
-            .tag(Tag::parse(vec!["notifications", "payment_received payment_sent"]).unwrap())
+    if send_notifications {
+        info_event_builder =
+            info_event_builder.tag(Tag::parse(vec!["notifications", &notifications]).unwrap())
     }
 
     let info_event = match info_event_builder.sign_with_keys(&wallet_keys) {
@@ -421,6 +423,72 @@ async fn nwc_request_handler(
                     String::new(),
                 ),
             }]
+        }
+        nip47::RequestParams::MakeHoldInvoice(make_hold_invoice_request) => {
+            vec![
+                match make_hold_invoice(plugin.clone(), make_hold_invoice_request).await {
+                    Ok(o) => (
+                        nip47::Response {
+                            result_type: nip47::Method::MakeHoldInvoice,
+                            error: None,
+                            result: Some(nip47::ResponseResult::MakeHoldInvoice(o)),
+                        },
+                        String::new(),
+                    ),
+                    Err(e) => (
+                        nip47::Response {
+                            result_type: nip47::Method::MakeHoldInvoice,
+                            error: Some(e),
+                            result: None,
+                        },
+                        String::new(),
+                    ),
+                },
+            ]
+        }
+        nip47::RequestParams::CancelHoldInvoice(cancel_hold_invoice_request) => {
+            vec![
+                match cancel_hold_invoice(plugin.clone(), cancel_hold_invoice_request).await {
+                    Ok(o) => (
+                        nip47::Response {
+                            result_type: nip47::Method::CancelHoldInvoice,
+                            error: None,
+                            result: Some(nip47::ResponseResult::CancelHoldInvoice(o)),
+                        },
+                        String::new(),
+                    ),
+                    Err(e) => (
+                        nip47::Response {
+                            result_type: nip47::Method::CancelHoldInvoice,
+                            error: Some(e),
+                            result: None,
+                        },
+                        String::new(),
+                    ),
+                },
+            ]
+        }
+        nip47::RequestParams::SettleHoldInvoice(settle_hold_invoice_request) => {
+            vec![
+                match settle_hold_invoice(plugin.clone(), settle_hold_invoice_request).await {
+                    Ok(o) => (
+                        nip47::Response {
+                            result_type: nip47::Method::SettleHoldInvoice,
+                            error: None,
+                            result: Some(nip47::ResponseResult::SettleHoldInvoice(o)),
+                        },
+                        String::new(),
+                    ),
+                    Err(e) => (
+                        nip47::Response {
+                            result_type: nip47::Method::SettleHoldInvoice,
+                            error: Some(e),
+                            result: None,
+                        },
+                        String::new(),
+                    ),
+                },
+            ]
         }
     };
     for (response, id) in responses.into_iter() {
