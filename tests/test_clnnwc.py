@@ -1318,7 +1318,7 @@ async def nostr_relay(test_base_dir):
     stdout_thread.start()
     stderr_thread.start()
 
-    time.sleep(2)
+    time.sleep(4)
 
     yield dynamic_port
 
