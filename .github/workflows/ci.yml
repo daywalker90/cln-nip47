@@ -92,6 +92,7 @@ jobs:
 
     - name: Save bitcoind cache
       id: save-cache-bitcoind
+      if : ${{ always() }}
       uses: actions/cache/save@v4
       with:
         path: /usr/local/bin/bitcoin*
@@ -107,8 +108,9 @@ jobs:
           sudo tar -xvf ${url##*/} -C /usr/local --strip-components=2
           echo "CLN_VERSION=$(lightningd --version)" >> "$GITHUB_OUTPUT"
 
-    - name: Restore CLN cache
+    - name: Save CLN cache
       id: save-cache-cln
+      if : ${{ always() }}
       uses: actions/cache/save@v4
       with:
         path: |
