@@ -1,12 +1,9 @@
-#!/usr/bin/python
-
 import hashlib
 import importlib.resources as pkg_resources
 import json
 import logging
 import socket
 import subprocess
-import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,34 +16,32 @@ from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import RpcError, wait_for
 from util import generate_random_label, get_plugin  # noqa: F401
 
-if sys.version_info >= (3, 9):
-    from nostr_sdk import (
-        Alphabet,
-        Client,
-        RelayUrl,
-        EventBuilder,
-        Filter,
-        Keys,
-        KeysendTlvRecord,
-        Kind,
-        ListTransactionsRequest,
-        LookupInvoiceRequest,
-        MakeInvoiceRequest,
-        NostrSdkError,
-        NostrSigner,
-        NostrWalletConnectUri,
-        Nwc,
-        PayInvoiceRequest,
-        PayKeysendRequest,
-        SingleLetterTag,
-        Tag,
-        TagKind,
-    )
+from nostr_sdk import (
+    Alphabet,
+    Client,
+    RelayUrl,
+    EventBuilder,
+    Filter,
+    Keys,
+    KeysendTlvRecord,
+    Kind,
+    ListTransactionsRequest,
+    LookupInvoiceRequest,
+    MakeInvoiceRequest,
+    NostrSdkError,
+    NostrSigner,
+    NostrWalletConnectUri,
+    Nwc,
+    PayInvoiceRequest,
+    PayKeysendRequest,
+    SingleLetterTag,
+    Tag,
+    TagKind,
+)
 
 LOGGER = logging.getLogger(__name__)
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_get_balance(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -86,7 +81,6 @@ async def test_get_balance(node_factory, get_plugin, nostr_client):  # noqa: F81
         uri_str = l1.rpc.call("nip47-create", ["test3", -1])["uri"]
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -203,7 +197,6 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     )
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -274,7 +267,6 @@ async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F8
         )
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_pay_keysend(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -326,7 +318,6 @@ async def test_pay_keysend(node_factory, get_plugin, nostr_client):  # noqa: F81
         )
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_multi_keysend(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -425,7 +416,6 @@ async def test_multi_keysend(node_factory, get_plugin, nostr_client):  # noqa: F
         assert content["error"]["code"] == "QUOTA_EXCEEDED"
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -632,7 +622,6 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     )
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_list_transactions(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -717,7 +706,6 @@ async def test_list_transactions(node_factory, get_plugin, nostr_client):  # noq
         tx.fees_paid is not None
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_notifications(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -877,7 +865,6 @@ async def test_notifications(node_factory, get_plugin, nostr_client):  # noqa: F
         assert events.len() == 2
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_pay_invoice(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -925,7 +912,6 @@ async def test_pay_invoice(node_factory, get_plugin, nostr_client):  # noqa: F81
         )
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_multi_pay(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -1016,7 +1002,6 @@ async def test_multi_pay(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert len(error_pays) == 1
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
@@ -1146,7 +1131,6 @@ async def test_persistency(node_factory, get_plugin, nostr_client):  # noqa: F81
     assert list["test1"]["budget_msat"] == 3000
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="Requires Python 3.9 or higher")
 @pytest.mark.asyncio
 async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
