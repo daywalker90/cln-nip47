@@ -92,7 +92,7 @@ jobs:
 
     - name: Save bitcoind cache
       id: save-cache-bitcoind
-      if : ${{ always() }}
+      if : ${{ always() && steps.cache-bitcoind.outputs.cache-hit != 'true'}}
       uses: actions/cache/save@v4
       with:
         path: /usr/local/bin/bitcoin*
@@ -110,7 +110,7 @@ jobs:
 
     - name: Save CLN cache
       id: save-cache-cln
-      if : ${{ always() }}
+      if : ${{ always() && steps.cache-cln.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: |
