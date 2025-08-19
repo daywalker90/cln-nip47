@@ -49,23 +49,23 @@ github_url="https://github.com/daywalker90/$name/releases/download/v$version/$ar
 # Download the archive using curl
 if ! curl -L "$github_url" -o "$script_dir/$archive_file"; then
     echo "Error downloading the file from $github_url" >&2
-    # exit 1
+    exit 1
 fi
 
 # Extract the contents
 if [[ $archive_file == *.tar.gz ]]; then
     if ! tar -xzvf "$script_dir/$archive_file" -C "$script_dir"; then
         echo "Error extracting the contents of $archive_file" >&2
-        # exit 1
+        exit 1
     fi
 elif [[ $archive_file == *.zip ]]; then
     if ! unzip "$script_dir/$archive_file" -d "$script_dir"; then
         echo "Error extracting the contents of $archive_file" >&2
-        # exit 1
+        exit 1
     fi
 else
     echo "Unknown archive format or unsupported file extension: $archive_file" >&2
-    # exit 1
+    exit 1
 fi
 
 proto_path="$script_dir/../proto"
