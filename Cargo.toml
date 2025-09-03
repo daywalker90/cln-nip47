@@ -2,7 +2,7 @@
 name = "cln-nip47"
 version = "0.1.5"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 
 [dependencies]
 anyhow = "1"
