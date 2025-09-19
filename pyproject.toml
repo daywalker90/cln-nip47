@@ -14,7 +14,7 @@ dev = [
     "nostr-sdk>=0.43",
     "PyYAML>=6.0.2,<7",
     "nostr_relay>=1.14",
-    "pyln-testing==25.5",
-    "pyln-client==25.5",
-    "pyln-proto==25.5",
+    "pyln-testing>=24.11.1",
+    "pyln-client>=24.11.1",
+    "pyln-proto>=24.11.1",
 ]
