@@ -153,4 +153,4 @@ jobs:
         export VALGRIND=0
         export PYTEST_TIMEOUT=600
 
-        uv run --with pyln-testing==${{ inputs.pyln-version }} pytest -n=10 tests/test_*.py
+        uv run -v --with pyln-testing==${{ inputs.pyln-version }} --with pyln-client==${{ inputs.pyln-version }} --with pyln-proto==${{ inputs.pyln-version }} pytest -n=10 tests/test_*.py
