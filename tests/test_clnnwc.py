@@ -37,6 +37,7 @@ from nostr_sdk import (
     SingleLetterTag,
     Tag,
     TagKind,
+    Method,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -102,15 +103,15 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
     assert get_info.methods == [
-        "pay_invoice",
-        "multi_pay_invoice",
-        "pay_keysend",
-        "multi_pay_keysend",
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
+        Method.PAY_INVOICE,
+        Method.MULTI_PAY_INVOICE,
+        Method.PAY_KEYSEND,
+        Method.MULTI_PAY_KEYSEND,
+        Method.MAKE_INVOICE,
+        Method.LOOKUP_INVOICE,
+        Method.LIST_TRANSACTIONS,
+        Method.GET_BALANCE,
+        Method.GET_INFO,
     ]
     assert get_info.network == "regtest"
     assert get_info.notifications == ["payment_received", "payment_sent"]
@@ -131,15 +132,15 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
     assert get_info.methods == [
-        "pay_invoice",
-        "multi_pay_invoice",
-        "pay_keysend",
-        "multi_pay_keysend",
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
+        Method.PAY_INVOICE,
+        Method.MULTI_PAY_INVOICE,
+        Method.PAY_KEYSEND,
+        Method.MULTI_PAY_KEYSEND,
+        Method.MAKE_INVOICE,
+        Method.LOOKUP_INVOICE,
+        Method.LIST_TRANSACTIONS,
+        Method.GET_BALANCE,
+        Method.GET_INFO,
     ]
     assert get_info.network == "regtest"
     assert get_info.notifications == []
@@ -170,11 +171,11 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
     nwc = Nwc(uri)
     get_info = await nwc.get_info()
     assert get_info.methods == [
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
+        Method.MAKE_INVOICE,
+        Method.LOOKUP_INVOICE,
+        Method.LIST_TRANSACTIONS,
+        Method.GET_BALANCE,
+        Method.GET_INFO,
     ]
 
     signer = NostrSigner.keys(Keys(uri.secret()))
@@ -1211,15 +1212,15 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
 
     get_info = await nwc.get_info()
     assert get_info.methods == [
-        "pay_invoice",
-        "multi_pay_invoice",
-        "pay_keysend",
-        "multi_pay_keysend",
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
+        Method.PAY_INVOICE,
+        Method.MULTI_PAY_INVOICE,
+        Method.PAY_KEYSEND,
+        Method.MULTI_PAY_KEYSEND,
+        Method.MAKE_INVOICE,
+        Method.LOOKUP_INVOICE,
+        Method.LIST_TRANSACTIONS,
+        Method.GET_BALANCE,
+        Method.GET_INFO,
     ]
 
     signer = NostrSigner.keys(Keys(uri.secret()))
@@ -1252,11 +1253,11 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
 
     get_info = await nwc.get_info()
     assert get_info.methods == [
-        "make_invoice",
-        "lookup_invoice",
-        "list_transactions",
-        "get_balance",
-        "get_info",
+        Method.MAKE_INVOICE,
+        Method.LOOKUP_INVOICE,
+        Method.LIST_TRANSACTIONS,
+        Method.GET_BALANCE,
+        Method.GET_INFO,
     ]
 
     events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
