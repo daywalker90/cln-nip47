@@ -121,6 +121,12 @@ pub async fn lookup_invoice(
             .payment_preimage
             .map(|p| hex::encode(p.to_vec()));
 
+        let state = match invoice_response.status {
+            ListinvoicesInvoicesStatus::UNPAID => nip47::TransactionState::Pending,
+            ListinvoicesInvoicesStatus::PAID => nip47::TransactionState::Settled,
+            ListinvoicesInvoicesStatus::EXPIRED => nip47::TransactionState::Expired,
+        };
+
         Ok(nip47::LookupInvoiceResponse {
             transaction_type: Some(nip47::TransactionType::Incoming),
             invoice: Some(invstring),
@@ -134,6 +140,7 @@ pub async fn lookup_invoice(
             expires_at: Some(Timestamp::from_secs(invoice_response.expires_at)),
             settled_at: invoice_response.paid_at.map(Timestamp::from_secs),
             metadata: None,
+            state: Some(state),
         })
     } else {
         let payment_hash_hash = if let Some(hash) = params.payment_hash {
@@ -241,6 +248,12 @@ pub async fn lookup_invoice(
         let fees_paid = list_pay.amount_sent_msat.unwrap().msat() - amount;
         let preimage = list_pay.preimage.map(|p| hex::encode(p.to_vec()));
 
+        let state = match list_pay.status {
+            ListpaysPaysStatus::PENDING => nip47::TransactionState::Pending,
+            ListpaysPaysStatus::FAILED => nip47::TransactionState::Failed,
+            ListpaysPaysStatus::COMPLETE => nip47::TransactionState::Settled,
+        };
+
         Ok(nip47::LookupInvoiceResponse {
             transaction_type: Some(nip47::TransactionType::Outgoing),
             invoice: invstring,
@@ -254,6 +267,7 @@ pub async fn lookup_invoice(
             expires_at: None,
             settled_at: list_pay.completed_at.map(Timestamp::from_secs),
             metadata: None,
+            state: Some(state),
         })
     }
 }
@@ -272,8 +286,6 @@ pub async fn list_transactions(
         None => (true, true),
     };
 
-    let from = params.from.map(|f| f.as_u64());
-    let until = params.until.map(|f| f.as_u64());
     let unpaid = params.unpaid.unwrap_or(false);
 
     let mut transactions: Vec<nip47::LookupInvoiceResponse> = Vec::new();
@@ -330,13 +342,13 @@ pub async fn list_transactions(
                 }
                 _ => continue,
             };
-            if let Some(f) = from {
-                if created_at.as_u64() < f {
+            if let Some(f) = params.from {
+                if created_at < f {
                     continue;
                 }
             }
-            if let Some(u) = until {
-                if created_at.as_u64() > u {
+            if let Some(u) = params.until {
+                if created_at > u {
                     continue;
                 }
             }
@@ -387,6 +399,12 @@ pub async fn list_transactions(
                 .payment_preimage
                 .map(|p| hex::encode(p.to_vec()));
 
+            let state = match list_invoice.status {
+                ListinvoicesInvoicesStatus::PAID => nip47::TransactionState::Settled,
+                ListinvoicesInvoicesStatus::EXPIRED => nip47::TransactionState::Expired,
+                ListinvoicesInvoicesStatus::UNPAID => nip47::TransactionState::Pending,
+            };
+
             transactions.push(nip47::LookupInvoiceResponse {
                 transaction_type: Some(nip47::TransactionType::Incoming),
                 invoice: Some(invstring),
@@ -400,6 +418,7 @@ pub async fn list_transactions(
                 expires_at,
                 settled_at: list_invoice.paid_at.map(Timestamp::from_secs),
                 metadata: None,
+                state: Some(state),
             });
         }
     }
@@ -496,6 +515,12 @@ pub async fn list_transactions(
             let fees_paid = list_pay.amount_sent_msat.unwrap().msat() - amount;
             let preimage = list_pay.preimage.map(|p| hex::encode(p.to_vec()));
 
+            let state = match list_pay.status {
+                ListpaysPaysStatus::COMPLETE => nip47::TransactionState::Settled,
+                ListpaysPaysStatus::FAILED => nip47::TransactionState::Failed,
+                ListpaysPaysStatus::PENDING => nip47::TransactionState::Pending,
+            };
+
             transactions.push(nip47::LookupInvoiceResponse {
                 transaction_type: Some(nip47::TransactionType::Outgoing),
                 invoice: invstring,
@@ -509,6 +534,7 @@ pub async fn list_transactions(
                 expires_at: None,
                 settled_at: list_pay.completed_at.map(Timestamp::from_secs),
                 metadata: None,
+                state: Some(state),
             });
         }
     }

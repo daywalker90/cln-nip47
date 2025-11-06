@@ -40,18 +40,18 @@ const OPT_NOTIFICATIONS: DefaultBooleanConfigOption = ConfigOption::new_bool_wit
     "Enable/disable nip47-notifications. Default is `true`",
 );
 pub const PLUGIN_NAME: &str = "cln-nip47";
-pub const WALLET_READ_METHODS: [&str; 5] = [
-    "make_invoice",
-    "lookup_invoice",
-    "list_transactions",
-    "get_balance",
-    "get_info",
+pub const WALLET_READ_METHODS: [nips::nip47::Method; 5] = [
+    nips::nip47::Method::MakeInvoice,
+    nips::nip47::Method::LookupInvoice,
+    nips::nip47::Method::ListTransactions,
+    nips::nip47::Method::GetBalance,
+    nips::nip47::Method::GetInfo,
 ];
-pub const WALLET_ALL_METHODS: [&str; 9] = [
-    "pay_invoice",
-    "multi_pay_invoice",
-    "pay_keysend",
-    "multi_pay_keysend",
+pub const WALLET_ALL_METHODS: [nips::nip47::Method; 9] = [
+    nips::nip47::Method::PayInvoice,
+    nips::nip47::Method::MultiPayInvoice,
+    nips::nip47::Method::PayKeysend,
+    nips::nip47::Method::MultiPayKeysend,
     WALLET_READ_METHODS[0],
     WALLET_READ_METHODS[1],
     WALLET_READ_METHODS[2],

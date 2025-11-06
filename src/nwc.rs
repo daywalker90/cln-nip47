@@ -24,9 +24,9 @@ pub async fn run_nwc(
     nwc_store: NwcStore,
 ) -> Result<(), client::Error> {
     let capabilities = if is_read_only_nwc(&nwc_store) {
-        WALLET_READ_METHODS.join(" ")
+        WALLET_READ_METHODS.map(|c| c.as_str().to_owned()).join(" ")
     } else {
-        WALLET_ALL_METHODS.join(" ")
+        WALLET_ALL_METHODS.map(|c| c.as_str().to_owned()).join(" ")
     };
 
     let wallet_keys = Keys::new(
@@ -421,6 +421,45 @@ async fn nwc_request_handler(
                     String::new(),
                 ),
             }]
+        }
+        nip47::RequestParams::MakeHoldInvoice(_make_hold_invoice_request) => {
+            vec![(
+                nip47::Response {
+                    result_type: nip47::Method::MakeHoldInvoice,
+                    error: Some(nip47::NIP47Error {
+                        code: nip47::ErrorCode::NotImplemented,
+                        message: "Not implemented".to_owned(),
+                    }),
+                    result: None,
+                },
+                String::new(),
+            )]
+        }
+        nip47::RequestParams::CancelHoldInvoice(_cancel_hold_invoice_request) => {
+            vec![(
+                nip47::Response {
+                    result_type: nip47::Method::CancelHoldInvoice,
+                    error: Some(nip47::NIP47Error {
+                        code: nip47::ErrorCode::NotImplemented,
+                        message: "Not implemented".to_owned(),
+                    }),
+                    result: None,
+                },
+                String::new(),
+            )]
+        }
+        nip47::RequestParams::SettleHoldInvoice(_settle_hold_invoice_request) => {
+            vec![(
+                nip47::Response {
+                    result_type: nip47::Method::SettleHoldInvoice,
+                    error: Some(nip47::NIP47Error {
+                        code: nip47::ErrorCode::NotImplemented,
+                        message: "Not implemented".to_owned(),
+                    }),
+                    result: None,
+                },
+                String::new(),
+            )]
         }
     };
     for (response, id) in responses.into_iter() {

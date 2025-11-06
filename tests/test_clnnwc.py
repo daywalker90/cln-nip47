@@ -211,6 +211,7 @@ async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F8
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
     nwc = Nwc(NostrWalletConnectUri.parse(uri_str))
+    timestamp = int(time.time())
     invoice = await nwc.make_invoice(
         MakeInvoiceRequest(
             amount=3000, description="test1", description_hash=None, expiry=None
@@ -218,11 +219,18 @@ async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F8
     )
     node_invoice = l1.rpc.call("decode", [invoice.invoice])
     assert invoice.payment_hash == node_invoice["payment_hash"]
-    assert node_invoice["amount_msat"] == 3000
-    assert node_invoice["expiry"] == 604800
-    assert node_invoice["description"] == "test1"
+    assert node_invoice["amount_msat"] == invoice.amount
+    assert timestamp + node_invoice["expiry"] == pytest.approx(
+        invoice.expires_at.as_secs(), abs=1
+    )
+    assert node_invoice["created_at"] == pytest.approx(
+        invoice.created_at.as_secs(), abs=1
+    )
+    assert node_invoice["description"] == invoice.description
     assert "description_hash" not in node_invoice
+    assert invoice.description_hash is None
 
+    timestamp = int(time.time())
     invoice = await nwc.make_invoice(
         MakeInvoiceRequest(
             amount=3001,
@@ -236,13 +244,16 @@ async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F8
     ][0]
     node_invoice_decode = l1.rpc.call("decode", [invoice.invoice])
     assert invoice.payment_hash == node_invoice["payment_hash"]
-    assert node_invoice["amount_msat"] == 3001
-    assert node_invoice_decode["expiry"] == 120
-    assert node_invoice["description"] == "test2"
-    assert (
-        node_invoice_decode["description_hash"]
-        == hashlib.sha256("test2".encode()).hexdigest()
+    assert node_invoice["amount_msat"] == invoice.amount
+    assert timestamp + node_invoice_decode["expiry"] == pytest.approx(
+        invoice.expires_at.as_secs(), abs=1
     )
+    assert node_invoice_decode["created_at"] == pytest.approx(
+        invoice.created_at.as_secs(), abs=1
+    )
+    assert node_invoice["description"] == invoice.description
+    assert node_invoice_decode["description_hash"] == invoice.description_hash
+
     with pytest.raises(
         NostrSdkError.Generic, match="Must have description when using description_hash"
     ):
@@ -271,8 +282,8 @@ async def test_make_invoice(node_factory, get_plugin, nostr_client):  # noqa: F8
 async def test_pay_keysend(node_factory, get_plugin, nostr_client):  # noqa: F811
     nostr_client, relay_port = nostr_client
     url = f"127.0.0.1:{relay_port}"
-    l1, l2 = node_factory.line_graph(
-        2,
+    l1, l2, l3 = node_factory.line_graph(
+        3,
         wait_for_announce=True,
         opts=[
             {
@@ -281,6 +292,7 @@ async def test_pay_keysend(node_factory, get_plugin, nostr_client):  # noqa: F81
                 "nip47-relays": f"ws://{url}",
             },
             {"log-level": "debug"},
+            {"log-level": "debug"},
         ],
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
@@ -288,11 +300,13 @@ async def test_pay_keysend(node_factory, get_plugin, nostr_client):  # noqa: F81
     nwc = Nwc(NostrWalletConnectUri.parse(uri_str))
     result = await nwc.pay_keysend(
         PayKeysendRequest(
-            id="id123", amount=1000, pubkey=l2.info["id"], preimage=None, tlv_records=[]
+            id="id123", amount=1000, pubkey=l3.info["id"], preimage=None, tlv_records=[]
         )
     )
     pay = l1.rpc.call("listpays", {})["pays"][0]
     assert result.preimage == pay["preimage"]
+    assert result.fees_paid == pay["amount_sent_msat"] - pay["amount_msat"]
+    assert result.fees_paid == 1
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_keysend(
@@ -496,6 +510,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
+    assert invoice_lookup.state.name == "PENDING"
     assert invoice_lookup.settled_at is None
 
     invoice_lookup = await nwc.lookup_invoice(
@@ -518,6 +533,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
+    assert invoice_lookup.state.name == "PENDING"
     assert invoice_lookup.settled_at is None
 
     invoice = await nwc.make_invoice(
@@ -556,6 +572,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
+    assert invoice_lookup.state.name == "PENDING"
     assert invoice_lookup.settled_at is None
 
     l2.rpc.call("pay", {"bolt11": invoice.invoice})
@@ -584,6 +601,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "INCOMING"
+    assert invoice_lookup.state.name == "SETTLED"
     assert invoice_lookup.settled_at.as_secs() == pytest.approx(
         listpays_rpc["paid_at"], abs=1
     )
@@ -617,6 +635,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
     assert invoice_lookup.metadata is None
     assert invoice_lookup.payment_hash == listpays_rpc["payment_hash"]
     assert invoice_lookup.transaction_type.name == "OUTGOING"
+    assert invoice_lookup.state.name == "SETTLED"
     assert invoice_lookup.settled_at.as_secs() == pytest.approx(
         listpays_rpc["completed_at"], abs=1
     )
@@ -702,6 +721,7 @@ async def test_list_transactions(node_factory, get_plugin, nostr_client):  # noq
         tx.settled_at is not None
         tx.metadata is None
         tx.transaction_type is not None
+        tx.state is not None
         tx.payment_hash is not None
         tx.fees_paid is not None
 

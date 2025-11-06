@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use cln_plugin::Plugin;
 use cln_rpc::model::requests::GetinfoRequest;
 use nostr_sdk::nips::*;
@@ -23,13 +21,7 @@ pub async fn get_info(
             message: e.to_string(),
         })?;
 
-    let pubkey =
-        nostr_sdk::secp256k1::PublicKey::from_str(&get_info.id.to_string()).map_err(|e| {
-            nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            }
-        })?;
+    let pubkey = get_info.id.to_string();
 
     let network = match get_info.network.as_str() {
         "bitcoin" => "mainnet".to_owned(),
@@ -49,15 +41,9 @@ pub async fn get_info(
         })?;
 
     let methods = if is_read_only_nwc(&nwc_store) {
-        WALLET_READ_METHODS
-            .into_iter()
-            .map(|s| s.to_owned())
-            .collect()
+        WALLET_READ_METHODS.to_vec()
     } else {
-        WALLET_ALL_METHODS
-            .into_iter()
-            .map(|s| s.to_owned())
-            .collect()
+        WALLET_ALL_METHODS.to_vec()
     };
 
     Ok(nip47::GetInfoResponse {

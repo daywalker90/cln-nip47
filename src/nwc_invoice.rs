@@ -18,7 +18,7 @@ pub async fn make_invoice(
 
     let mut deschashonly = None;
 
-    if let Some(d_hash) = params.description_hash {
+    if let Some(d_hash) = &params.description_hash {
         if params.description.is_none() {
             return Err(nip47::NIP47Error {
                 code: nip47::ErrorCode::Other,
@@ -49,14 +49,23 @@ pub async fn make_invoice(
             exposeprivatechannels: None,
             fallbacks: None,
             amount_msat: AmountOrAny::Amount(Amount::from_msat(params.amount)),
-            description: params.description.unwrap_or("NWC make_invoice".to_owned()),
+            description: params
+                .description
+                .clone()
+                .unwrap_or("NWC make_invoice".to_owned()),
             label: Uuid::new_v4().to_string(),
         })
         .await
     {
         Ok(o) => Ok(nip47::MakeInvoiceResponse {
             invoice: o.bolt11,
-            payment_hash: o.payment_hash.to_string(),
+            payment_hash: Some(o.payment_hash.to_string()),
+            description: params.description,
+            description_hash: params.description_hash,
+            preimage: None,
+            amount: Some(params.amount),
+            created_at: Some(nostr_sdk::nostr::Timestamp::now()),
+            expires_at: Some(nostr_sdk::nostr::Timestamp::from_secs(o.expires_at)),
         }),
         Err(e) => Err(nip47::NIP47Error {
             code: nip47::ErrorCode::Internal,

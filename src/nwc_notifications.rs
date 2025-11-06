@@ -3,7 +3,7 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::model::requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest};
-use cln_rpc::model::responses::ListpaysPaysStatus;
+use cln_rpc::model::responses::{ListinvoicesInvoicesStatus, ListpaysPaysStatus};
 use cln_rpc::primitives::Sha256;
 
 use crate::structs::PluginState;
@@ -114,6 +114,12 @@ pub async fn payment_received_handler(
 
     let clients = plugin.state().handles.lock().await;
 
+    let state = match invoice.status {
+        ListinvoicesInvoicesStatus::UNPAID => nip47::TransactionState::Pending,
+        ListinvoicesInvoicesStatus::PAID => nip47::TransactionState::Settled,
+        ListinvoicesInvoicesStatus::EXPIRED => nip47::TransactionState::Expired,
+    };
+
     for (client, client_pubkey) in clients.values() {
         let signer = client.signer().await?;
         let content = nip47::Notification {
@@ -131,6 +137,7 @@ pub async fn payment_received_handler(
                 expires_at: None,
                 settled_at,
                 metadata: None,
+                state: Some(state),
             }),
         };
         let notification = serde_json::to_string(&content)?;
@@ -290,6 +297,12 @@ pub async fn payment_sent_handler(
 
     let clients = plugin.state().handles.lock().await;
 
+    let state = match pay.status {
+        ListpaysPaysStatus::PENDING => nip47::TransactionState::Pending,
+        ListpaysPaysStatus::FAILED => nip47::TransactionState::Failed,
+        ListpaysPaysStatus::COMPLETE => nip47::TransactionState::Settled,
+    };
+
     for (client, client_pubkey) in clients.values() {
         let signer = client.signer().await?;
         let content = nip47::Notification {
@@ -307,6 +320,7 @@ pub async fn payment_sent_handler(
                 expires_at: None,
                 settled_at,
                 metadata: None,
+                state: Some(state),
             }),
         };
         let notification = serde_json::to_string(&content)?;

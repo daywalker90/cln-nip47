@@ -26,7 +26,7 @@ pub async fn budget_task(
             .interval_config
             .as_mut()
             .ok_or_else(|| anyhow!("interval_config disappeared!"))?;
-        let now = Timestamp::now().as_u64();
+        let now = Timestamp::now().as_secs();
         log::debug!(
             "interval:{} now:{} prev:{}",
             interval_config.interval_secs,
@@ -49,7 +49,7 @@ pub async fn budget_task(
                 *nwc_store.budget_msat
                     .as_mut()
                     .ok_or_else(||anyhow!("budget_msat missing"))? = interval_config.reset_budget_msat;
-                interval_config.last_reset = Timestamp::now().as_u64();
+                interval_config.last_reset = Timestamp::now().as_secs();
                 update_nwc_store(&mut rpc, &label, nwc_store).await?;
                 log::info!("Done refreshing budget for {}",label);
             }

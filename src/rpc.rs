@@ -55,7 +55,7 @@ pub async fn nwc_create(
             let conf = BudgetIntervalConfig {
                 interval_secs: interval,
                 reset_budget_msat: bgt_msat,
-                last_reset: Timestamp::now().as_u64(),
+                last_reset: Timestamp::now().as_secs(),
             };
             result.insert("interval_config".to_owned(), serde_json::to_value(&conf)?);
             Some(conf)
@@ -125,7 +125,7 @@ pub async fn nwc_budget(
             let interval_config = BudgetIntervalConfig {
                 interval_secs: interval,
                 reset_budget_msat: budget,
-                last_reset: Timestamp::now().as_u64(),
+                last_reset: Timestamp::now().as_secs(),
             };
             nwc_store.interval_config = Some(interval_config.clone());
         } else {
@@ -147,9 +147,9 @@ pub async fn nwc_budget(
     if is_old_nwc_read_only != is_new_nwc_read_only {
         let wallet_keys = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
         let capabilities = if is_new_nwc_read_only {
-            WALLET_READ_METHODS.join(" ")
+            WALLET_READ_METHODS.map(|c| c.as_str().to_owned()).join(" ")
         } else {
-            WALLET_ALL_METHODS.join(" ")
+            WALLET_ALL_METHODS.map(|c| c.as_str().to_owned()).join(" ")
         };
         let clients = plugin.state().handles.lock().await;
         send_nwc_info_event(
