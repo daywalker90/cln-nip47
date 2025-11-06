@@ -5,7 +5,7 @@ use cln_rpc::{
     model::requests::InvoiceRequest,
     primitives::{Amount, AmountOrAny, Sha256},
 };
-use nostr_sdk::nips::*;
+use nostr_sdk::nips::nip47;
 use uuid::Uuid;
 
 use crate::structs::PluginState;
@@ -27,7 +27,7 @@ pub async fn make_invoice(
         }
         let description = params.description.as_ref().unwrap();
         let my_description_hash = Sha256::const_hash(description.as_bytes());
-        let description_hash = Sha256::from_str(&d_hash).map_err(|e| nip47::NIP47Error {
+        let description_hash = Sha256::from_str(d_hash).map_err(|e| nip47::NIP47Error {
             code: nip47::ErrorCode::Internal,
             message: e.to_string(),
         })?;
@@ -37,7 +37,7 @@ pub async fn make_invoice(
                 message: "description_hash not matching description".to_owned(),
             });
         }
-        deschashonly = Some(true)
+        deschashonly = Some(true);
     }
 
     match rpc

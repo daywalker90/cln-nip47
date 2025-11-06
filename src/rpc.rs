@@ -3,8 +3,10 @@ use cln_plugin::Plugin;
 use cln_rpc::model::requests::{
     DatastoreMode, DatastoreRequest, DeldatastoreRequest, ListdatastoreRequest,
 };
-use nostr_sdk::nips::nip47::*;
-use nostr_sdk::*;
+use nostr_sdk::nips::nip47::NostrWalletConnectURI;
+use nostr_sdk::Keys;
+use nostr_sdk::SecretKey;
+use nostr_sdk::Timestamp;
 use serde_json::json;
 
 use crate::nwc::{
@@ -113,7 +115,7 @@ pub async fn nwc_budget(
 
     let (label, budget_msat, interval_secs) = parse_full_args(args)?;
 
-    stop_nwc_budget_job(plugin.clone(), &label);
+    stop_nwc_budget_job(&plugin, &label);
 
     let mut nwc_store = load_nwc_store(&mut rpc, &label).await?;
 
@@ -139,7 +141,7 @@ pub async fn nwc_budget(
     let is_new_nwc_read_only = is_read_only_nwc(&nwc_store);
 
     if nwc_store.interval_config.is_some() {
-        start_nwc_budget_job(plugin.clone(), label.clone());
+        start_nwc_budget_job(&plugin, label.clone());
     }
 
     update_nwc_store(&mut rpc, &label, nwc_store.clone()).await?;
@@ -155,7 +157,7 @@ pub async fn nwc_budget(
         send_nwc_info_event(
             clients
                 .get(&label)
-                .ok_or_else(|| anyhow!("No client found for label: {}", label))?
+                .ok_or_else(|| anyhow!("No client found for label: {label}"))?
                 .0
                 .clone(),
             plugin.option(&OPT_NOTIFICATIONS).unwrap(),
@@ -195,14 +197,14 @@ pub async fn nwc_list(
         });
         nwcs.push(json!({lbl:nwc_json}));
     } else {
-        let nwcs_store = rpc
+        let all_stored_nwcs = rpc
             .call_typed(&ListdatastoreRequest {
                 key: Some(vec![PLUGIN_NAME.to_owned()]),
             })
             .await?
             .datastore;
 
-        for datastore in nwcs_store.into_iter() {
+        for datastore in all_stored_nwcs {
             let label = datastore.key.last().unwrap().to_owned();
             let nwc_store = load_nwc_store(&mut rpc, &label).await?;
             let wallet_key = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);

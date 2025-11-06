@@ -9,8 +9,11 @@ use cln_rpc::primitives::Sha256;
 use crate::structs::PluginState;
 use crate::OPT_NOTIFICATIONS;
 
-use nostr_sdk::nips::*;
-use nostr_sdk::*;
+use nostr_sdk::nips::nip47;
+use nostr_sdk::nostr::EventBuilder;
+use nostr_sdk::nostr::Kind;
+use nostr_sdk::nostr::Tag;
+use nostr_sdk::Timestamp;
 
 pub async fn payment_received_handler(
     plugin: Plugin<PluginState>,
@@ -141,7 +144,7 @@ pub async fn payment_received_handler(
             }),
         };
         let notification = serde_json::to_string(&content)?;
-        log::debug!("NOTIFICATION: {}", notification);
+        log::debug!("NOTIFICATION: {notification}");
         let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, &notification).await?;
         let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
             .tag(Tag::public_key(*client_pubkey))
@@ -156,9 +159,9 @@ pub async fn payment_received_handler(
                     .into_values()
                     .collect::<Vec<String>>()
                     .join(", ")
-            )
+            );
         }
-        log::debug!("NIP04 NOTIFICATION SENT: {:?}", event_nip04);
+        log::debug!("NIP04 NOTIFICATION SENT: {event_nip04:?}");
 
         let content_encrypted_nip44 = signer.nip44_encrypt(client_pubkey, &notification).await?;
         let event_nip44 = EventBuilder::new(Kind::from_u16(23197), content_encrypted_nip44)
@@ -174,9 +177,9 @@ pub async fn payment_received_handler(
                     .into_values()
                     .collect::<Vec<String>>()
                     .join(", ")
-            )
+            );
         }
-        log::debug!("NIP44 NOTIFICATION SENT: {:?}", event_nip44);
+        log::debug!("NIP44 NOTIFICATION SENT: {event_nip44:?}");
     }
 
     Ok(())
@@ -239,7 +242,16 @@ pub async fn payment_sent_handler(
     );
     let settled_at = Timestamp::from_secs(pay.completed_at.unwrap());
 
-    if !invstring.is_empty() {
+    if invstring.is_empty() {
+        description = pay.description.clone();
+        description_hash = None;
+        amount = if let Some(amt) = pay.amount_msat {
+            amt.msat()
+        } else {
+            // Amount missing but required
+            0
+        }
+    } else {
         let invoice_decoded = rpc
             .call_typed(&DecodeRequest {
                 string: invstring.clone(),
@@ -282,15 +294,6 @@ pub async fn payment_sent_handler(
             }
             _ => return not_invoice_err,
         };
-    } else {
-        description = pay.description.clone();
-        description_hash = None;
-        amount = if let Some(amt) = pay.amount_msat {
-            amt.msat()
-        } else {
-            // Amount missing but required
-            0
-        }
     }
 
     let fees_paid = pay.amount_sent_msat.unwrap().msat() - amount;
@@ -324,7 +327,7 @@ pub async fn payment_sent_handler(
             }),
         };
         let notification = serde_json::to_string(&content)?;
-        log::debug!("NOTIFICATION: {}", notification);
+        log::debug!("NOTIFICATION: {notification}");
         let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, &notification).await?;
         let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
             .tag(Tag::public_key(*client_pubkey))
@@ -339,9 +342,9 @@ pub async fn payment_sent_handler(
                     .into_values()
                     .collect::<Vec<String>>()
                     .join(", ")
-            )
+            );
         }
-        log::debug!("NIP04 NOTIFICATION SENT: {:?}", event_nip04);
+        log::debug!("NIP04 NOTIFICATION SENT: {event_nip04:?}");
 
         let content_encrypted_nip44 = signer.nip44_encrypt(client_pubkey, &notification).await?;
         let event_nip44 = EventBuilder::new(Kind::from_u16(23197), content_encrypted_nip44)
@@ -357,9 +360,9 @@ pub async fn payment_sent_handler(
                     .into_values()
                     .collect::<Vec<String>>()
                     .join(", ")
-            )
+            );
         }
-        log::debug!("NIP44 NOTIFICATION SENT: {:?}", event_nip44);
+        log::debug!("NIP44 NOTIFICATION SENT: {event_nip44:?}");
     }
 
     Ok(())

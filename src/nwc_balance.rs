@@ -1,6 +1,6 @@
 use cln_plugin::Plugin;
 use cln_rpc::{model::requests::ListpeerchannelsRequest, primitives::ChannelState};
-use nostr_sdk::nips::*;
+use nostr_sdk::nips::nip47;
 
 use crate::{structs::PluginState, util::load_nwc_store};
 
@@ -34,7 +34,7 @@ pub async fn get_balance(
                 || chan.state == ChannelState::CHANNELD_AWAITING_SPLICE
             {
                 if let Some(spend) = chan.spendable_msat {
-                    amount_msat += spend.msat()
+                    amount_msat += spend.msat();
                 }
             }
         }

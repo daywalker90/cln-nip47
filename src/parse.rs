@@ -14,14 +14,13 @@ pub async fn read_startup_options(
     state: &PluginState,
 ) -> Result<(), anyhow::Error> {
     let relays_str = if let Some(relays) = plugin.option(&OPT_RELAYS).unwrap() {
-        if !relays.is_empty() {
-            relays
-        } else {
+        if relays.is_empty() {
             return Err(anyhow!(
                 "Empty `{}` option, must specify atleast one relay url!",
                 OPT_RELAYS.name()
             ));
         }
+        relays
     } else {
         return Err(anyhow!(
             "`{}` not set, must specify atleast one relay url!",
@@ -36,8 +35,8 @@ pub async fn read_startup_options(
     let version = rpc.call_typed(&GetinfoRequest {}).await?.version;
     let mut config = state.config.lock();
     config.my_cln_version = version;
-    for relay in relays_str.into_iter() {
-        log::debug!("RELAY:{}", relay);
+    for relay in relays_str {
+        log::debug!("RELAY:{relay}");
         config.relays.push(nostr_sdk::RelayUrl::parse(&relay)?);
     }
     Ok(())
@@ -58,9 +57,9 @@ pub fn parse_time_period(input: &str) -> Result<u64, anyhow::Error> {
                 TimeUnit::Week => Ok(value * 60 * 60 * 24 * 7),
             }
         } else {
-            Err(anyhow!(format!("Unsupported time unit: {}", unit)))
+            Err(anyhow!(format!("Unsupported time unit: {unit}")))
         }
     } else {
-        Err(anyhow!("Invalid time format: {}", input))
+        Err(anyhow!("Invalid time format: {input}"))
     }
 }

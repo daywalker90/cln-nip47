@@ -12,10 +12,8 @@ pub fn budget_amount_check(
     budget_msat: Option<u64>,
 ) -> Result<(), anyhow::Error> {
     log::debug!(
-        "checking budget and amounts for request:{:?} invoice:{:?} budget:{:?}",
-        request_amt_msat,
-        invoice_amt_msat,
-        budget_msat
+        "checking budget and amounts for request:{request_amt_msat:?} \
+        invoice:{invoice_amt_msat:?} budget:{budget_msat:?}"
     );
     if request_amt_msat.is_none() && invoice_amt_msat.is_none() {
         return Err(anyhow!("No amount given to check budget against!"));
@@ -53,12 +51,12 @@ pub async fn load_nwc_store(rpc: &mut ClnRpc, label: &String) -> Result<NwcStore
         .datastore;
     let nwc_store_str = nwc_store_store
         .first()
-        .ok_or_else(|| anyhow!("No datastore found for: {}", label))?
+        .ok_or_else(|| anyhow!("No datastore found for: {label}"))?
         .string
         .as_ref()
         .ok_or_else(|| anyhow!("Malformed nwc_store datastore: missing string"))?;
     let nwc_store: NwcStore = serde_json::from_str(nwc_store_str)?;
-    log::debug!("loaded nwc store for label:{}", label);
+    log::debug!("loaded nwc store for label:{label}");
     Ok(nwc_store)
 }
 
@@ -75,7 +73,7 @@ pub async fn update_nwc_store(
         string: Some(serde_json::to_string(&nwc_store)?),
     })
     .await?;
-    log::debug!("stored nwc store for label:{}", label);
+    log::debug!("stored nwc store for label:{label}");
     Ok(())
 }
 
@@ -102,7 +100,7 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     let min_version_parts: Vec<&str> = min_version.split('.').collect();
 
     if my_version_parts.len() <= 1 || my_version_parts.len() > 3 {
-        return Err(anyhow!("Version string parse error: {}", my_version));
+        return Err(anyhow!("Version string parse error: {my_version}"));
     }
     for (my, min) in my_version_parts.iter().zip(min_version_parts.iter()) {
         let my_num: u32 = my.parse()?;

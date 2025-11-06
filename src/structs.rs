@@ -58,7 +58,7 @@ impl FromStr for TimeUnit {
             "hour" | "hours" | "h" => Ok(TimeUnit::Hour),
             "day" | "days" | "d" => Ok(TimeUnit::Day),
             "week" | "weeks" | "w" => Ok(TimeUnit::Week),
-            _ => Err(format!("Unsupported time unit: {}", s)),
+            _ => Err(format!("Unsupported time unit: {s}")),
         }
     }
 }

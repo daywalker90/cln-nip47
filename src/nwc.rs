@@ -12,9 +12,25 @@ use crate::util::is_read_only_nwc;
 use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
 use anyhow::anyhow;
 use cln_plugin::Plugin;
-use nostr_sdk::nips::*;
+use nostr_sdk::client;
+use nostr_sdk::nips::nip04;
+use nostr_sdk::nips::nip44;
+use nostr_sdk::nips::nip47;
+use nostr_sdk::nostr::Filter;
+use nostr_sdk::nostr::Kind;
+use nostr_sdk::nostr::Tag;
+use nostr_sdk::Alphabet;
 use nostr_sdk::Client;
-use nostr_sdk::*;
+use nostr_sdk::EventBuilder;
+use nostr_sdk::Keys;
+use nostr_sdk::PublicKey;
+use nostr_sdk::RelayPoolNotification;
+use nostr_sdk::RelayStatus;
+use nostr_sdk::SecretKey;
+use nostr_sdk::SignerError;
+use nostr_sdk::SingleLetterTag;
+use nostr_sdk::TagKind;
+use nostr_sdk::Timestamp;
 use tokio::sync::oneshot;
 use tokio::time;
 
@@ -39,13 +55,13 @@ pub async fn run_nwc(
 
     log::debug!("relay_count:{}", nwc_store.uri.relays.len());
 
-    for relay in nwc_store.uri.relays.iter() {
-        log::debug!("Adding relay: {}", relay);
+    for relay in &nwc_store.uri.relays {
+        log::debug!("Adding relay: {relay}");
         client.add_relay(relay).await?;
     }
 
     if nwc_store.interval_config.is_some() {
-        start_nwc_budget_job(plugin.clone(), label.clone());
+        start_nwc_budget_job(&plugin, label.clone());
     }
 
     let client_clone = client.clone();
@@ -67,7 +83,7 @@ pub async fn run_nwc(
                 if relay.status() == RelayStatus::Connected {
                     connected = true;
                 } else {
-                    log::info!("Could not connect to {}", url)
+                    log::info!("Could not connect to {url}");
                 }
             }
             if !connected {
@@ -84,7 +100,7 @@ pub async fn run_nwc(
             )
             .await
             {
-                log::warn!("{}", e);
+                log::warn!("{e}");
                 client_clone.disconnect().await;
                 time::sleep(Duration::from_secs(5)).await;
                 continue;
@@ -95,11 +111,11 @@ pub async fn run_nwc(
                 .author(client_pubkey);
 
             if let Err(e) = client_clone.subscribe(filter, None).await {
-                log::warn!("Could not subscribe to nwc events! {}", e);
+                log::warn!("Could not subscribe to nwc events! {e}");
                 client_clone.disconnect().await;
                 time::sleep(Duration::from_secs(5)).await;
                 continue;
-            };
+            }
 
             let client_clone_handler = client_clone.clone();
             match client_clone
@@ -120,10 +136,10 @@ pub async fn run_nwc(
                 .await
             {
                 Ok(()) => {
-                    log::info!("NWC handler for `{}` stopped", label_clone);
+                    log::info!("NWC handler for `{label_clone}` stopped");
                     break;
                 }
-                Err(e) => log::warn!("NWC handler for `{}` had an error: {}", label_clone, e),
+                Err(e) => log::warn!("NWC handler for `{label_clone}` had an error: {e}"),
             };
         }
     });
@@ -147,20 +163,20 @@ pub async fn send_nwc_info_event(
 
     if notifications {
         info_event_builder = info_event_builder
-            .tag(Tag::parse(vec!["notifications", "payment_received payment_sent"]).unwrap())
+            .tag(Tag::parse(vec!["notifications", "payment_received payment_sent"]).unwrap());
     }
 
     let info_event = match info_event_builder.sign_with_keys(&wallet_keys) {
         Ok(o) => o,
         Err(e) => {
-            return Err(anyhow!("Could not sign info_event! {}", e));
+            return Err(anyhow!("Could not sign info_event! {e}"));
         }
     };
-    log::debug!("info_event:{:?}", info_event);
+    log::debug!("info_event:{info_event:?}");
     let send_result = match client.send_event(&info_event).await {
         Ok(o) => o,
         Err(e) => {
-            return Err(anyhow!("Could not send info_event! {}", e));
+            return Err(anyhow!("Could not send info_event! {e}"));
         }
     };
     if send_result.success.is_empty() {
@@ -182,16 +198,16 @@ pub async fn stop_nwc(plugin: Plugin<PluginState>, label: &String) {
         client.shutdown().await;
     }
 
-    stop_nwc_budget_job(plugin.clone(), label);
+    stop_nwc_budget_job(&plugin, label);
 }
 
-pub fn start_nwc_budget_job(plugin: Plugin<PluginState>, label: String) {
+pub fn start_nwc_budget_job(plugin: &Plugin<PluginState>, label: String) {
     let (tx, rx) = oneshot::channel::<()>();
     tokio::spawn(budget_task(rx, plugin.clone(), label.clone()));
     plugin.state().budget_jobs.lock().insert(label, tx);
 }
 
-pub fn stop_nwc_budget_job(plugin: Plugin<PluginState>, label: &String) {
+pub fn stop_nwc_budget_job(plugin: &Plugin<PluginState>, label: &String) {
     let mut budget_jobs = plugin.state().budget_jobs.lock();
     let job = budget_jobs.remove(label);
     if let Some(j) = job {
@@ -206,7 +222,7 @@ async fn nwc_request_handler(
     label: String,
     wallet_keys: Keys,
     client_pubkey: PublicKey,
-) -> Result<bool> {
+) -> Result<bool, Box<dyn std::error::Error>> {
     let (relay_url, subscription_id, event) = match notification {
         RelayPoolNotification::Event {
             relay_url,
@@ -225,12 +241,7 @@ async fn nwc_request_handler(
             return Ok(false);
         }
     }
-    log::debug!(
-        "relay_url:{} subscription_id:{} {:?}",
-        relay_url,
-        subscription_id,
-        event
-    );
+    log::debug!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
     let use_nip44;
     let content = match nip44::decrypt(wallet_keys.secret_key(), &client_pubkey, &event.content) {
         Ok(o) => {
@@ -238,24 +249,24 @@ async fn nwc_request_handler(
             o
         }
         Err(e) => {
-            log::debug!("Could not decrypt using NIP-44:{}. Trying NIP-04", e);
+            log::debug!("Could not decrypt using NIP-44:{e}. Trying NIP-04");
             match nip04::decrypt(wallet_keys.secret_key(), &client_pubkey, &event.content) {
                 Ok(o) => {
                     use_nip44 = false;
                     o
                 }
                 Err(e) => {
-                    log::warn!("Could not decrypt using NIP-04 or NIP-44:{}", e);
+                    log::warn!("Could not decrypt using NIP-04 or NIP-44:{e}");
                     return Ok(false);
                 }
             }
         }
     };
-    log::debug!("Decrypted:{}", content);
+    log::debug!("Decrypted:{content}");
     let request: nip47::Request = match serde_json::from_str(&content) {
         Ok(o) => o,
         Err(e) => {
-            log::warn!("Error parsing nip47::Request! {}", e);
+            log::warn!("Error parsing nip47::Request! {e}");
             return Ok(false);
         }
     };
@@ -462,15 +473,15 @@ async fn nwc_request_handler(
             )]
         }
     };
-    for (response, id) in responses.into_iter() {
+    for (response, id) in responses {
         let response_str = match serde_json::to_string(&response) {
             Ok(o) => o,
             Err(e) => {
-                log::warn!("Error serializing response! {}", e);
+                log::warn!("Error serializing response! {e}");
                 continue;
             }
         };
-        log::debug!("RESPONSE:{}", response_str);
+        log::debug!("RESPONSE:{response_str}");
 
         let content = if use_nip44 {
             match nip44::encrypt(
@@ -481,7 +492,7 @@ async fn nwc_request_handler(
             ) {
                 Ok(o) => o,
                 Err(e) => {
-                    log::warn!("Error encrypting response with nip44! {}", e);
+                    log::warn!("Error encrypting response with nip44! {e}");
                     continue;
                 }
             }
@@ -489,7 +500,7 @@ async fn nwc_request_handler(
             match nip04::encrypt(wallet_keys.secret_key(), &client_pubkey, response_str) {
                 Ok(o) => o,
                 Err(e) => {
-                    log::warn!("Error encrypting response with nip04! {}", e);
+                    log::warn!("Error encrypting response with nip04! {e}");
                     continue;
                 }
             }
@@ -509,14 +520,14 @@ async fn nwc_request_handler(
         let response_event = match response_builder.sign_with_keys(&wallet_keys) {
             Ok(o) => o,
             Err(e) => {
-                log::warn!("Error signing reponse event! {}", e);
+                log::warn!("Error signing reponse event! {e}");
                 continue;
             }
         };
         let send_result = match client.send_event(&response_event).await {
             Ok(o) => o,
             Err(e) => {
-                log::warn!("Error sending response event! {}", e);
+                log::warn!("Error sending response event! {e}");
                 continue;
             }
         };
@@ -531,7 +542,7 @@ async fn nwc_request_handler(
             );
             continue;
         }
-        log::debug!("SENT RESPONSE {:?}", response_event);
+        log::debug!("SENT RESPONSE {response_event:?}");
     }
 
     Ok(false)

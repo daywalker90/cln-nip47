@@ -8,8 +8,8 @@ use cln_rpc::{
     },
     primitives::Sha256,
 };
-use nostr_sdk::nips::*;
-use nostr_sdk::*;
+use nostr_sdk::nips::nip47;
+use nostr_sdk::Timestamp;
 
 use crate::structs::PluginState;
 
@@ -307,7 +307,7 @@ pub async fn list_transactions(
             })?
             .invoices;
 
-        for list_invoice in list_invoices.into_iter() {
+        for list_invoice in list_invoices {
             if list_invoice.status == ListinvoicesInvoicesStatus::EXPIRED {
                 continue;
             }
@@ -386,7 +386,7 @@ pub async fn list_transactions(
                 cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
                     invoice_decoded.invoice_relative_expiry.map(|e_at| {
                         Timestamp::from_secs(
-                            invoice_decoded.invoice_created_at.unwrap() + (e_at as u64),
+                            invoice_decoded.invoice_created_at.unwrap() + u64::from(e_at),
                         )
                     })
                 }
@@ -440,7 +440,7 @@ pub async fn list_transactions(
             })?
             .pays;
 
-        for list_pay in list_pays.into_iter() {
+        for list_pay in list_pays {
             if list_pay.status != ListpaysPaysStatus::COMPLETE {
                 continue;
             }
@@ -543,7 +543,7 @@ pub async fn list_transactions(
 
     if let Some(l) = params.limit {
         if transactions.len() > (l as usize) {
-            transactions = transactions.drain(0..(l as usize)).collect()
+            transactions = transactions.drain(0..(l as usize)).collect();
         }
     }
     transactions = trim_to_size(transactions, 127 * 1024);
@@ -566,12 +566,11 @@ fn trim_to_size(
                         max_size
                     );
                     return transactions;
-                } else {
-                    transactions.pop();
                 }
+                transactions.pop();
             }
             Err(e) => {
-                log::warn!("Failed to serialize transactions: {}", e);
+                log::warn!("Failed to serialize transactions: {e}");
                 return transactions;
             }
         }

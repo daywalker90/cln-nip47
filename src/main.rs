@@ -7,7 +7,7 @@ use cln_plugin::{
 };
 use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc};
 
-use nostr_sdk::*;
+use nostr_sdk::nips::nip47;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
 use parse::read_startup_options;
@@ -40,18 +40,18 @@ const OPT_NOTIFICATIONS: DefaultBooleanConfigOption = ConfigOption::new_bool_wit
     "Enable/disable nip47-notifications. Default is `true`",
 );
 pub const PLUGIN_NAME: &str = "cln-nip47";
-pub const WALLET_READ_METHODS: [nips::nip47::Method; 5] = [
-    nips::nip47::Method::MakeInvoice,
-    nips::nip47::Method::LookupInvoice,
-    nips::nip47::Method::ListTransactions,
-    nips::nip47::Method::GetBalance,
-    nips::nip47::Method::GetInfo,
+pub const WALLET_READ_METHODS: [nip47::Method; 5] = [
+    nip47::Method::MakeInvoice,
+    nip47::Method::LookupInvoice,
+    nip47::Method::ListTransactions,
+    nip47::Method::GetBalance,
+    nip47::Method::GetInfo,
 ];
-pub const WALLET_ALL_METHODS: [nips::nip47::Method; 9] = [
-    nips::nip47::Method::PayInvoice,
-    nips::nip47::Method::MultiPayInvoice,
-    nips::nip47::Method::PayKeysend,
-    nips::nip47::Method::MultiPayKeysend,
+pub const WALLET_ALL_METHODS: [nip47::Method; 9] = [
+    nip47::Method::PayInvoice,
+    nip47::Method::MultiPayInvoice,
+    nip47::Method::PayKeysend,
+    nip47::Method::MultiPayKeysend,
     WALLET_READ_METHODS[0],
     WALLET_READ_METHODS[1],
     WALLET_READ_METHODS[2],
@@ -90,13 +90,13 @@ async fn main() -> Result<(), anyhow::Error> {
                 Ok(state) => state,
                 Err(e) => {
                     return plugin
-                        .disable(format!("Error connecting to cln rpc: {}", e).as_str())
+                        .disable(format!("Error connecting to cln rpc: {e}").as_str())
                         .await;
                 }
             };
             match read_startup_options(&plugin, &state).await {
                 Ok(()) => &(),
-                Err(e) => return plugin.disable(format!("{}", e).as_str()).await,
+                Err(e) => return plugin.disable(format!("{e}").as_str()).await,
             };
             log::debug!("read startup options done");
             plugin
@@ -113,7 +113,7 @@ async fn main() -> Result<(), anyhow::Error> {
         time::sleep(Duration::from_secs(1)).await;
 
         match load_nwcs(plugin.clone(), &mut rpc).await {
-            Ok(_) => log::info!("All NWC's loaded"),
+            Ok(()) => log::info!("All NWC's loaded"),
             Err(e) => {
                 println!(
                     "{}",
@@ -146,7 +146,7 @@ async fn load_nwcs(plugin: Plugin<PluginState>, rpc: &mut ClnRpc) -> Result<(), 
             key: Some(vec![PLUGIN_NAME.to_owned()]),
         })
         .await?;
-    for datastore in labels.datastore.into_iter() {
+    for datastore in labels.datastore {
         let label = datastore.key.last().unwrap();
         let mut nwc_store = load_nwc_store(rpc, label).await?;
 

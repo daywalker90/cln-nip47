@@ -41,17 +41,17 @@ pub async fn budget_task(
         );
         tokio::select! {
             _ = &mut rx => {
-                log::info!("Stopping budget task for {}", label);
+                log::info!("Stopping budget task for {label}");
                 break;
             }
             _ = time::sleep(Duration::from_secs(next_reset)) => {
-                log::info!("Refreshing budget for {}",label);
+                log::info!("Refreshing budget for {label}");
                 *nwc_store.budget_msat
                     .as_mut()
                     .ok_or_else(||anyhow!("budget_msat missing"))? = interval_config.reset_budget_msat;
                 interval_config.last_reset = Timestamp::now().as_secs();
                 update_nwc_store(&mut rpc, &label, nwc_store).await?;
-                log::info!("Done refreshing budget for {}",label);
+                log::info!("Done refreshing budget for {label}");
             }
         }
     }

@@ -5,7 +5,7 @@ use cln_rpc::{
     model::requests::{DecodeRequest, PayRequest, XpayRequest},
     primitives::Amount,
 };
-use nostr_sdk::nips::*;
+use nostr_sdk::nips::nip47;
 use tokio::time;
 
 use crate::{
@@ -54,7 +54,7 @@ pub async fn pay_invoice(
     } else {
         match invoice_decoded.item_type {
             cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                invoice_decoded.invoice_payment_hash.unwrap().to_string()
+                invoice_decoded.invoice_payment_hash.unwrap()
             }
             cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
                 invoice_decoded.payment_hash.unwrap().to_string()
