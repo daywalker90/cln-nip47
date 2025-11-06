@@ -641,6 +641,19 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_client):  # noqa: 
         listpays_rpc["completed_at"], abs=1
     )
 
+    invoice = await nwc.make_invoice(
+        MakeInvoiceRequest(
+            amount=0, description="test_0_amt", description_hash=None, expiry=None
+        )
+    )
+    invoice_lookup = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=invoice.payment_hash,
+            invoice=None,
+        )
+    )
+    assert invoice_lookup.amount == 0
+
 
 @pytest.mark.asyncio
 async def test_list_transactions(node_factory, get_plugin, nostr_client):  # noqa: F811
@@ -700,6 +713,14 @@ async def test_list_transactions(node_factory, get_plugin, nostr_client):  # noq
             )
         )
         result = l2.rpc.call("pay", [invoice.invoice])
+
+    invoice = await nwc.make_invoice(
+        MakeInvoiceRequest(
+            amount=0, description="test_0_amt", description_hash=None, expiry=None
+        )
+    )
+    result = l2.rpc.call("pay", [invoice.invoice, 1111])
+
     result = await nwc.list_transactions(
         ListTransactionsRequest(
             _from=None,
@@ -710,7 +731,7 @@ async def test_list_transactions(node_factory, get_plugin, nostr_client):  # noq
             transaction_type=None,
         )
     )
-    assert len(result) == 21
+    assert len(result) == 22
     for tx in result:
         tx.description is not None
         tx.invoice is not None

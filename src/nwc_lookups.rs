@@ -55,7 +55,7 @@ pub async fn lookup_invoice(
         .invoices;
 
     if invoices.len() == 1 {
-        let invoice_response = invoices.first().cloned().unwrap();
+        let invoice_response = invoices.into_iter().next().unwrap();
         let invstring = if invoice_response.bolt11.is_some() {
             invoice_response.bolt11.unwrap()
         } else {
@@ -178,7 +178,7 @@ pub async fn lookup_invoice(
                 message: "Transaction not found".to_owned(),
             });
         }
-        let list_pay = pays.first().unwrap().clone();
+        let list_pay = pays.into_iter().next().unwrap();
         let invstring = if list_pay.bolt11.is_some() {
             list_pay.bolt11
         } else {
@@ -226,7 +226,8 @@ pub async fn lookup_invoice(
                     if let Some(amt) = inv_dec.amount_msat {
                         amt.msat()
                     } else {
-                        return not_invoice_err;
+                        // amount: `any` but have to put a value...
+                        0
                     }
                 }
                 _ => return not_invoice_err,
@@ -245,7 +246,11 @@ pub async fn lookup_invoice(
             list_pay.description
         };
 
-        let fees_paid = list_pay.amount_sent_msat.unwrap().msat() - amount;
+        let fees_paid = if let Some(amt_sent) = list_pay.amount_sent_msat {
+            amt_sent.msat() - amount
+        } else {
+            0
+        };
         let preimage = list_pay.preimage.map(|p| hex::encode(p.to_vec()));
 
         let state = match list_pay.status {
@@ -308,9 +313,6 @@ pub async fn list_transactions(
             .invoices;
 
         for list_invoice in list_invoices {
-            if list_invoice.status == ListinvoicesInvoicesStatus::EXPIRED {
-                continue;
-            }
             if !unpaid && list_invoice.status == ListinvoicesInvoicesStatus::UNPAID {
                 continue;
             }
@@ -441,9 +443,6 @@ pub async fn list_transactions(
             .pays;
 
         for list_pay in list_pays {
-            if list_pay.status != ListpaysPaysStatus::COMPLETE {
-                continue;
-            }
             let invstring = if list_pay.bolt11.is_some() {
                 list_pay.bolt11
             } else {
@@ -491,7 +490,8 @@ pub async fn list_transactions(
                         if let Some(amt) = inv_dec.amount_msat {
                             amt.msat()
                         } else {
-                            continue;
+                            // amount: `any` but have to put a value...
+                            0
                         }
                     }
                     _ => continue,
@@ -512,7 +512,11 @@ pub async fn list_transactions(
                 list_pay.description
             };
 
-            let fees_paid = list_pay.amount_sent_msat.unwrap().msat() - amount;
+            let fees_paid = if let Some(amt_sent) = list_pay.amount_sent_msat {
+                amt_sent.msat() - amount
+            } else {
+                0
+            };
             let preimage = list_pay.preimage.map(|p| hex::encode(p.to_vec()));
 
             let state = match list_pay.status {
@@ -540,6 +544,14 @@ pub async fn list_transactions(
     }
 
     transactions.sort_by_key(|t| Reverse(t.created_at));
+
+    if let Some(off) = params.offset.map(|o| o as usize) {
+        if off < transactions.len() {
+            transactions.drain(0..off);
+        } else {
+            transactions.clear();
+        }
+    }
 
     if let Some(l) = params.limit {
         if transactions.len() > (l as usize) {

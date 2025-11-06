@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+### Added
+- include pending and failed payments in ``list_transactions``, now that ``state`` exists wallets can display these more meaningfully
+- include expired invoices in ``list_transactions``, now that ``state`` exists wallets can display these more meaningfully
+
 ### Changed
 - upgrade ``nostr_sdk`` to ``v0.44`` and implement new fields in sync with the nip47 spec, e.g. ``state`` for transactions
+
+### Fixed
+- some minor fixes around bolt11 invoices with 0 amount (aka any amount)
+- Don't ignore `offset` parameter in ``list_transactions``
 
 ## [0.1.5] 2025-07-24
 

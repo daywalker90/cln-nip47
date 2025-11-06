@@ -296,7 +296,11 @@ pub async fn payment_sent_handler(
         };
     }
 
-    let fees_paid = pay.amount_sent_msat.unwrap().msat() - amount;
+    let fees_paid = if let Some(amt_sent) = pay.amount_sent_msat {
+        amt_sent.msat() - amount
+    } else {
+        0
+    };
 
     let clients = plugin.state().handles.lock().await;
 

@@ -40,6 +40,12 @@ pub async fn make_invoice(
         deschashonly = Some(true);
     }
 
+    let amount_msat = if params.amount == 0 {
+        AmountOrAny::Any
+    } else {
+        AmountOrAny::Amount(Amount::from_msat(params.amount))
+    };
+
     match rpc
         .call_typed(&InvoiceRequest {
             cltv: None,
@@ -48,7 +54,7 @@ pub async fn make_invoice(
             preimage: None,
             exposeprivatechannels: None,
             fallbacks: None,
-            amount_msat: AmountOrAny::Amount(Amount::from_msat(params.amount)),
+            amount_msat,
             description: params
                 .description
                 .clone()
