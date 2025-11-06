@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- upgrade ``nostr_sdk`` to ``v0.44`` and implement new fields in sync with the nip47 spec, e.g. ``state`` for transactions
+
 ## [0.1.5] 2025-07-24
 
 ### Changed
