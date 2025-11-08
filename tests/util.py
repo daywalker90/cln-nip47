@@ -1,8 +1,8 @@
-import logging
 import os
 import random
 import string
 from pathlib import Path
+from hashlib import sha256
 
 import pytest
 
@@ -11,13 +11,23 @@ plugin_dir = Path(__file__).parent.parent.resolve()
 COMPILED_PATH = plugin_dir / "target" / RUST_PROFILE / "cln-nip47"
 DOWNLOAD_PATH = plugin_dir / "tests" / "cln-nip47"
 
+DOWNLOAD_HOLD_PATH = plugin_dir / "tests" / "hold"
+
 
 @pytest.fixture
-def get_plugin(directory):
+def get_plugin():
     if COMPILED_PATH.is_file():
         return COMPILED_PATH
     elif DOWNLOAD_PATH.is_file():
         return DOWNLOAD_PATH
+    else:
+        raise ValueError("No files were found.")
+
+
+@pytest.fixture
+def get_hold():
+    if DOWNLOAD_HOLD_PATH.is_file():
+        return DOWNLOAD_HOLD_PATH
     else:
         raise ValueError("No files were found.")
 
@@ -32,15 +42,6 @@ def generate_random_label():
 
 def generate_random_number():
     return random.randint(1, 20_000_000_000_000_00_000)
-
-
-def pay_with_thread(rpc, bolt11):
-    LOGGER = logging.getLogger(__name__)
-    try:
-        rpc.dev_pay(bolt11, dev_use_shadow=False)
-    except Exception as e:
-        LOGGER.info(f"holdinvoice: Error paying payment hash:{e}")
-        pass
 
 
 def update_config_file_option(lightning_dir, option_name, option_value):
