@@ -127,6 +127,9 @@ For a private relay you can for example use [nostr-rs-relay](https://github.com/
      * list all NWC configurations or just the one with ``label``
      * ***label***: optional. The label the NWC was created with
 
+## Holdinvoice support
+For methods or notifications related to holdinvoices you need v0.3.2+ of [hold](https://github.com/BoltzExchange/hold) with enabled grpc (which is the default just make sure the port is free)
+
 ## Supported NWC methods
 * ``pay_invoice``
 * ``multi_pay_invoice``
@@ -137,10 +140,14 @@ For a private relay you can for example use [nostr-rs-relay](https://github.com/
 * ``list_transactions``
 * ``get_balance``
 * ``get_info`` (no ``block_hash``)
+* ``make_hold_invoice`` (requires [Holdinvoice support](#holdinvoice_support))
+* ``cancel_hold_invoice`` (requires [Holdinvoice support](#holdinvoice_support))
+* ``settle_hold_invoice`` (requires [Holdinvoice support](#holdinvoice_support))
 
 ## Supported NWC notifications
 * ``payment_received``
 * ``payment_sent``
+* ``hold_invoice_accepted`` (requires [Holdinvoice support](#holdinvoice_support))
 
 ## Supported content encryption:
 * [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md)

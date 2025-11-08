@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- holdinvoice methods: ``make_hold_invoice``, ``cancel_hold_invoice``, ``settle_hold_invoice``
+- holdinvoice notification: ``hold_invoice_accepted``
+
 ## [0.1.7] 2025-11-27
 
 ### Fixed
