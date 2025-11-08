@@ -5,6 +5,9 @@ use nostr_sdk::{client, nips::nip47, nostr};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
+use tonic::transport::Channel;
+
+use crate::hold::hold_client::HoldClient;
 
 pub const NOT_INV_ERR: &str = "Not an invoice or invalid invoice";
 
@@ -14,6 +17,7 @@ pub struct PluginState {
     pub handles: Arc<tokio::sync::Mutex<HashMap<String, (client::Client, nostr::PublicKey)>>>,
     pub rpc_lock: Arc<tokio::sync::Mutex<ClnRpc>>,
     pub budget_jobs: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    pub hold_client: Arc<Mutex<Option<HoldClient<Channel>>>>,
 }
 impl PluginState {
     pub async fn new(path: PathBuf) -> Result<PluginState, anyhow::Error> {
@@ -22,6 +26,7 @@ impl PluginState {
             handles: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             rpc_lock: Arc::new(tokio::sync::Mutex::new(ClnRpc::new(path).await?)),
             budget_jobs: Arc::new(Mutex::new(HashMap::new())),
+            hold_client: Arc::new(Mutex::new(None)),
         })
     }
 }
