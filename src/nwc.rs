@@ -158,7 +158,11 @@ pub async fn send_nwc_info_event(
     capabilities: String,
     wallet_keys: Keys,
 ) -> Result<(), anyhow::Error> {
-    let mut info_event_builder = EventBuilder::new(Kind::WalletConnectInfo, capabilities.clone())
+    let mut capabilities = capabilities;
+    if notifications {
+        capabilities.push_str(" notifications");
+    }
+    let mut info_event_builder = EventBuilder::new(Kind::WalletConnectInfo, capabilities)
         .tag(Tag::parse(vec!["encryption", "nip44_v2 nip04"]).unwrap());
 
     if notifications {

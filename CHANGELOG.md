@@ -12,6 +12,7 @@
 ### Fixed
 - some minor fixes around bolt11 invoices with 0 amount (aka any amount)
 - Don't ignore `offset` parameter in ``list_transactions``
+- add ``notifications`` to the ``info_event``'s ``content`` if enabled
 
 ## [0.1.5] 2025-07-24
 

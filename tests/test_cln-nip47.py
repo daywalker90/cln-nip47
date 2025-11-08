@@ -160,10 +160,16 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
+    events_vec = events.to_vec()
     assert (
-        events.to_vec()[0].content()
+        events_vec[0].content()
         == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info"
     )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("encryption")).content()
+        == "nip44_v2 nip04"
+    )
+    assert events_vec[0].tags().find(TagKind.UNKNOWN("notifications")) is None
 
     uri_str = l1.rpc.call("nip47-create", ["test2", 0])["uri"]
     LOGGER.info(uri_str)
@@ -192,10 +198,16 @@ async def test_get_info(node_factory, get_plugin, nostr_client):  # noqa: F811
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
+    events_vec = events.to_vec()
     assert (
-        events.to_vec()[0].content()
+        events_vec[0].content()
         == "make_invoice lookup_invoice list_transactions get_balance get_info"
     )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("encryption")).content()
+        == "nip44_v2 nip04"
+    )
+    assert events_vec[0].tags().find(TagKind.UNKNOWN("notifications")) is None
 
 
 @pytest.mark.asyncio
@@ -1258,9 +1270,18 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
+    events_vec = events.to_vec()
     assert (
-        events.to_vec()[0].content()
-        == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info"
+        events_vec[0].content()
+        == "pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_invoice lookup_invoice list_transactions get_balance get_info notifications"
+    )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("encryption")).content()
+        == "nip44_v2 nip04"
+    )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("notifications")).content()
+        == "payment_received payment_sent"
     )
 
     time.sleep(16)
@@ -1289,9 +1310,18 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
             response_filter, timeout=timedelta(seconds=1)
         )
     assert events.len() == 1
+    events_vec = events.to_vec()
     assert (
-        events.to_vec()[0].content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info"
+        events_vec[0].content()
+        == "make_invoice lookup_invoice list_transactions get_balance get_info notifications"
+    )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("encryption")).content()
+        == "nip44_v2 nip04"
+    )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("notifications")).content()
+        == "payment_received payment_sent"
     )
 
 
