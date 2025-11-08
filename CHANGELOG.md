@@ -8,6 +8,7 @@
 
 ### Changed
 - upgrade ``nostr_sdk`` to ``v0.44`` and implement new fields in sync with the nip47 spec, e.g. ``state`` for transactions
+- improved handling of events after a restart
 
 ### Fixed
 - some minor fixes around bolt11 invoices with 0 amount (aka any amount)

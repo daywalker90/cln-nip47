@@ -108,7 +108,8 @@ pub async fn run_nwc(
 
             let filter = Filter::new()
                 .kind(Kind::WalletConnectRequest)
-                .author(client_pubkey);
+                .author(client_pubkey)
+                .since(Timestamp::now() - 1);
 
             if let Err(e) = client_clone.subscribe(filter, None).await {
                 log::warn!("Could not subscribe to nwc events! {e}");
