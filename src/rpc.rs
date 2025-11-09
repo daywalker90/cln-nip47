@@ -14,8 +14,9 @@ use crate::nwc::{
 };
 use crate::parse::parse_time_period;
 use crate::structs::{BudgetIntervalConfig, NwcStore, PluginState};
+use crate::util::build_capabilities;
 use crate::util::{is_read_only_nwc, load_nwc_store, update_nwc_store};
-use crate::{OPT_NOTIFICATIONS, PLUGIN_NAME, WALLET_ALL_METHODS, WALLET_READ_METHODS};
+use crate::PLUGIN_NAME;
 
 pub async fn nwc_create(
     plugin: Plugin<PluginState>,
@@ -148,20 +149,16 @@ pub async fn nwc_budget(
 
     if is_old_nwc_read_only != is_new_nwc_read_only {
         let wallet_keys = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
-        let capabilities = if is_new_nwc_read_only {
-            WALLET_READ_METHODS.map(|c| c.as_str().to_owned()).join(" ")
-        } else {
-            WALLET_ALL_METHODS.map(|c| c.as_str().to_owned()).join(" ")
-        };
+        let (method_capabilities, _) = build_capabilities(is_new_nwc_read_only, &plugin);
         let clients = plugin.state().handles.lock().await;
         send_nwc_info_event(
+            plugin.clone(),
             clients
                 .get(&label)
                 .ok_or_else(|| anyhow!("No client found for label: {label}"))?
                 .0
                 .clone(),
-            plugin.option(&OPT_NOTIFICATIONS).unwrap(),
-            capabilities,
+            method_capabilities,
             wallet_keys,
         )
         .await?;

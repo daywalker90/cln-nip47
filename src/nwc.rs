@@ -8,8 +8,8 @@ use crate::nwc_lookups::{list_transactions, lookup_invoice};
 use crate::nwc_pay::{multi_pay_invoice, pay_invoice};
 use crate::structs::{NwcStore, PluginState};
 use crate::tasks::budget_task;
-use crate::util::is_read_only_nwc;
-use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
+use crate::util::{build_capabilities, build_notifications_vec, is_read_only_nwc};
+use crate::OPT_NOTIFICATIONS;
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use nostr_sdk::client;
@@ -39,11 +39,7 @@ pub async fn run_nwc(
     label: String,
     nwc_store: NwcStore,
 ) -> Result<(), client::Error> {
-    let capabilities = if is_read_only_nwc(&nwc_store) {
-        WALLET_READ_METHODS.map(|c| c.as_str().to_owned()).join(" ")
-    } else {
-        WALLET_ALL_METHODS.map(|c| c.as_str().to_owned()).join(" ")
-    };
+    let (method_capabilities, _) = build_capabilities(is_read_only_nwc(&nwc_store), &plugin);
 
     let wallet_keys = Keys::new(
         SecretKey::from_hex(&nwc_store.walletkey)
@@ -93,9 +89,9 @@ pub async fn run_nwc(
             }
 
             if let Err(e) = send_nwc_info_event(
+                plugin_clone.clone(),
                 client_clone.clone(),
-                plugin_clone.option(&OPT_NOTIFICATIONS).unwrap(),
-                capabilities.clone(),
+                method_capabilities.clone(),
                 wallet_keys.clone(),
             )
             .await
@@ -154,21 +150,22 @@ pub async fn run_nwc(
 }
 
 pub async fn send_nwc_info_event(
+    plugin: Plugin<PluginState>,
     client: Client,
-    notifications: bool,
     capabilities: String,
     wallet_keys: Keys,
 ) -> Result<(), anyhow::Error> {
     let mut capabilities = capabilities;
-    if notifications {
+    if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
         capabilities.push_str(" notifications");
     }
     let mut info_event_builder = EventBuilder::new(Kind::WalletConnectInfo, capabilities)
         .tag(Tag::parse(vec!["encryption", "nip44_v2 nip04"]).unwrap());
 
-    if notifications {
+    if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+        let notification_capabilities = build_notifications_vec(&plugin).join(" ");
         info_event_builder = info_event_builder
-            .tag(Tag::parse(vec!["notifications", "payment_received payment_sent"]).unwrap());
+            .tag(Tag::parse(vec!["notifications", &notification_capabilities]).unwrap());
     }
 
     let info_event = match info_event_builder.sign_with_keys(&wallet_keys) {

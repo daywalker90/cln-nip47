@@ -2,8 +2,7 @@ use cln_plugin::Plugin;
 use cln_rpc::model::requests::GetinfoRequest;
 
 use crate::structs::PluginState;
-use crate::util::{is_read_only_nwc, load_nwc_store};
-use crate::{OPT_NOTIFICATIONS, WALLET_ALL_METHODS, WALLET_READ_METHODS};
+use crate::util::{build_methods_vec, build_notifications_vec, is_read_only_nwc, load_nwc_store};
 use nostr_sdk::nips::nip47;
 
 pub async fn get_info(
@@ -26,11 +25,6 @@ pub async fn get_info(
         "bitcoin" => "mainnet".to_owned(),
         _ => get_info.network,
     };
-    let notifications = if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
-        vec!["payment_received".to_owned(), "payment_sent".to_owned()]
-    } else {
-        vec![]
-    };
 
     let nwc_store = load_nwc_store(&mut rpc, label)
         .await
@@ -39,11 +33,9 @@ pub async fn get_info(
             message: e.to_string(),
         })?;
 
-    let methods = if is_read_only_nwc(&nwc_store) {
-        WALLET_READ_METHODS.to_vec()
-    } else {
-        WALLET_ALL_METHODS.to_vec()
-    };
+    let notifications = build_notifications_vec(&plugin);
+
+    let methods = build_methods_vec(is_read_only_nwc(&nwc_store), &plugin);
 
     Ok(nip47::GetInfoResponse {
         alias: get_info.alias,

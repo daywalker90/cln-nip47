@@ -47,16 +47,15 @@ pub const WALLET_READ_METHODS: [nip47::Method; 5] = [
     nip47::Method::GetBalance,
     nip47::Method::GetInfo,
 ];
-pub const WALLET_ALL_METHODS: [nip47::Method; 9] = [
+pub const WALLET_PAY_METHODS: [nip47::Method; 4] = [
     nip47::Method::PayInvoice,
     nip47::Method::MultiPayInvoice,
     nip47::Method::PayKeysend,
     nip47::Method::MultiPayKeysend,
-    WALLET_READ_METHODS[0],
-    WALLET_READ_METHODS[1],
-    WALLET_READ_METHODS[2],
-    WALLET_READ_METHODS[3],
-    WALLET_READ_METHODS[4],
+];
+pub const WALLET_NOTIFICATIONS: [nip47::NotificationType; 2] = [
+    nip47::NotificationType::PaymentReceived,
+    nip47::NotificationType::PaymentSent,
 ];
 
 #[tokio::main]

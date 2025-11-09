@@ -1,10 +1,16 @@
 use anyhow::anyhow;
+use cln_plugin::Plugin;
 use cln_rpc::{
     model::requests::{DatastoreMode, DatastoreRequest, ListdatastoreRequest},
     ClnRpc,
 };
 
-use crate::{structs::NwcStore, PLUGIN_NAME};
+use nostr_sdk::nips::nip47;
+
+use crate::{
+    structs::{NwcStore, PluginState},
+    OPT_NOTIFICATIONS, PLUGIN_NAME, WALLET_NOTIFICATIONS, WALLET_PAY_METHODS, WALLET_READ_METHODS,
+};
 
 pub fn budget_amount_check(
     request_amt_msat: Option<u64>,
@@ -112,6 +118,42 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     }
 
     Ok(my_version_parts.len() >= min_version_parts.len())
+}
+
+pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (String, String) {
+    let mut methods = WALLET_READ_METHODS.map(|m| m.to_string()).join(" ");
+    if !is_read_only {
+        methods.push(' ');
+        methods.push_str(WALLET_PAY_METHODS.map(|m| m.to_string()).join(" ").as_str());
+    }
+
+    let mut notifications = String::new();
+    if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+        notifications.push_str(
+            WALLET_NOTIFICATIONS
+                .map(|m| m.to_string())
+                .join(" ")
+                .as_str(),
+        );
+    }
+
+    (methods, notifications)
+}
+
+pub fn build_methods_vec(is_read_only: bool, _plugin: &Plugin<PluginState>) -> Vec<nip47::Method> {
+    let mut methods = WALLET_READ_METHODS.to_vec();
+    if !is_read_only {
+        methods.extend_from_slice(&WALLET_PAY_METHODS);
+    }
+    methods
+}
+
+pub fn build_notifications_vec(plugin: &Plugin<PluginState>) -> Vec<String> {
+    let mut notifications = Vec::new();
+    if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
+        notifications.extend_from_slice(&WALLET_NOTIFICATIONS.map(|m| m.to_string()));
+    }
+    notifications
 }
 
 #[test]
