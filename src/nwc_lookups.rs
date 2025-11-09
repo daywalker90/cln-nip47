@@ -16,7 +16,31 @@ use nostr_sdk::Timestamp;
 
 use crate::structs::{PluginState, NOT_INV_ERR};
 
-pub async fn lookup_invoice(
+pub async fn lookup_invoice_response(
+    plugin: Plugin<PluginState>,
+    params: nip47::LookupInvoiceRequest,
+) -> Vec<(nip47::Response, Option<String>)> {
+    vec![match lookup_invoice(plugin, params).await {
+        Ok(o) => (
+            nip47::Response {
+                result_type: nip47::Method::LookupInvoice,
+                error: None,
+                result: Some(nip47::ResponseResult::LookupInvoice(o)),
+            },
+            None,
+        ),
+        Err(e) => (
+            nip47::Response {
+                result_type: nip47::Method::LookupInvoice,
+                error: Some(e),
+                result: None,
+            },
+            None,
+        ),
+    }]
+}
+
+async fn lookup_invoice(
     plugin: Plugin<PluginState>,
     params: nip47::LookupInvoiceRequest,
 ) -> Result<nip47::LookupInvoiceResponse, nip47::NIP47Error> {
@@ -98,7 +122,31 @@ pub async fn lookup_invoice(
     }
 }
 
-pub async fn list_transactions(
+pub async fn list_transactions_response(
+    plugin: Plugin<PluginState>,
+    params: nip47::ListTransactionsRequest,
+) -> Vec<(nip47::Response, Option<String>)> {
+    vec![match list_transactions(plugin, params).await {
+        Ok(o) => (
+            nip47::Response {
+                result_type: nip47::Method::ListTransactions,
+                error: None,
+                result: Some(nip47::ResponseResult::ListTransactions(o)),
+            },
+            None,
+        ),
+        Err(e) => (
+            nip47::Response {
+                result_type: nip47::Method::ListTransactions,
+                error: Some(e),
+                result: None,
+            },
+            None,
+        ),
+    }]
+}
+
+async fn list_transactions(
     plugin: Plugin<PluginState>,
     params: nip47::ListTransactionsRequest,
 ) -> Result<Vec<nip47::LookupInvoiceResponse>, nip47::NIP47Error> {

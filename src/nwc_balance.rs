@@ -4,7 +4,30 @@ use nostr_sdk::nips::nip47;
 
 use crate::{structs::PluginState, util::load_nwc_store};
 
-pub async fn get_balance(
+pub async fn get_balance_response(
+    plugin: Plugin<PluginState>,
+    label: &str,
+) -> Vec<(nip47::Response, Option<String>)> {
+    vec![match get_balance(plugin, label).await {
+        Ok(o) => (
+            nip47::Response {
+                result_type: nip47::Method::GetBalance,
+                error: None,
+                result: Some(nip47::ResponseResult::GetBalance(o)),
+            },
+            None,
+        ),
+        Err(e) => (
+            nip47::Response {
+                result_type: nip47::Method::GetBalance,
+                error: Some(e),
+                result: None,
+            },
+            None,
+        ),
+    }]
+}
+async fn get_balance(
     plugin: Plugin<PluginState>,
     label: &str,
 ) -> Result<nip47::GetBalanceResponse, nip47::NIP47Error> {

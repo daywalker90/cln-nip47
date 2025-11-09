@@ -13,7 +13,38 @@ use crate::{
     util::{budget_amount_check, load_nwc_store, update_nwc_store},
 };
 
-pub async fn pay_keysend(
+pub async fn pay_keysend_response(
+    plugin: Plugin<PluginState>,
+    params: nip47::PayKeysendRequest,
+    label: &str,
+) -> Vec<(nip47::Response, Option<String>)> {
+    let id = if let Some(i) = params.id.clone() {
+        i
+    } else {
+        params.pubkey.clone()
+    };
+
+    vec![match pay_keysend(plugin, params, label).await {
+        Ok(o) => (
+            nip47::Response {
+                result_type: nip47::Method::PayKeysend,
+                error: None,
+                result: Some(nip47::ResponseResult::PayKeysend(o)),
+            },
+            Some(id),
+        ),
+        Err(e) => (
+            nip47::Response {
+                result_type: nip47::Method::PayKeysend,
+                error: Some(e),
+                result: None,
+            },
+            Some(id),
+        ),
+    }]
+}
+
+async fn pay_keysend(
     plugin: Plugin<PluginState>,
     params: nip47::PayKeysendRequest,
     label: &str,

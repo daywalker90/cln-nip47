@@ -17,7 +17,32 @@ use crate::{
     util::{at_or_above_version, budget_amount_check, load_nwc_store, update_nwc_store},
 };
 
-pub async fn pay_invoice(
+pub async fn pay_invoice_response(
+    plugin: Plugin<PluginState>,
+    params: nip47::PayInvoiceRequest,
+    label: &str,
+) -> Vec<(nip47::Response, Option<String>)> {
+    vec![match pay_invoice(plugin, params, label).await {
+        Ok((o, id)) => (
+            nip47::Response {
+                result_type: nip47::Method::PayInvoice,
+                error: None,
+                result: Some(nip47::ResponseResult::PayInvoice(o)),
+            },
+            id,
+        ),
+        Err((e, id)) => (
+            nip47::Response {
+                result_type: nip47::Method::PayInvoice,
+                error: Some(e),
+                result: None,
+            },
+            id,
+        ),
+    }]
+}
+
+async fn pay_invoice(
     plugin: Plugin<PluginState>,
     params: nip47::PayInvoiceRequest,
     label: &str,

@@ -5,7 +5,31 @@ use crate::structs::PluginState;
 use crate::util::{build_methods_vec, build_notifications_vec, is_read_only_nwc, load_nwc_store};
 use nostr_sdk::nips::nip47;
 
-pub async fn get_info(
+pub async fn get_info_response(
+    plugin: Plugin<PluginState>,
+    label: &str,
+) -> Vec<(nip47::Response, Option<String>)> {
+    vec![match get_info(plugin, label).await {
+        Ok(o) => (
+            nip47::Response {
+                result_type: nip47::Method::GetInfo,
+                error: None,
+                result: Some(nip47::ResponseResult::GetInfo(o)),
+            },
+            None,
+        ),
+        Err(e) => (
+            nip47::Response {
+                result_type: nip47::Method::GetInfo,
+                error: Some(e),
+                result: None,
+            },
+            None,
+        ),
+    }]
+}
+
+async fn get_info(
     plugin: Plugin<PluginState>,
     label: &str,
 ) -> Result<nip47::GetInfoResponse, nip47::NIP47Error> {

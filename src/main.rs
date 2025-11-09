@@ -18,6 +18,7 @@ use util::{load_nwc_store, update_nwc_store};
 
 mod nwc;
 mod nwc_balance;
+mod nwc_hold;
 mod nwc_info;
 mod nwc_invoice;
 mod nwc_keysend;

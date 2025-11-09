@@ -10,7 +10,31 @@ use uuid::Uuid;
 
 use crate::structs::PluginState;
 
-pub async fn make_invoice(
+pub async fn make_invoice_response(
+    plugin: Plugin<PluginState>,
+    params: nip47::MakeInvoiceRequest,
+) -> Vec<(nip47::Response, Option<String>)> {
+    vec![match make_invoice(plugin, params).await {
+        Ok(o) => (
+            nip47::Response {
+                result_type: nip47::Method::MakeInvoice,
+                error: None,
+                result: Some(nip47::ResponseResult::MakeInvoice(o)),
+            },
+            None,
+        ),
+        Err(e) => (
+            nip47::Response {
+                result_type: nip47::Method::MakeInvoice,
+                error: Some(e),
+                result: None,
+            },
+            None,
+        ),
+    }]
+}
+
+async fn make_invoice(
     plugin: Plugin<PluginState>,
     params: nip47::MakeInvoiceRequest,
 ) -> Result<nip47::MakeInvoiceResponse, nip47::NIP47Error> {

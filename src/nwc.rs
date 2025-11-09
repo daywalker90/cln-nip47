@@ -1,11 +1,15 @@
+use std::borrow::Cow;
 use std::time::Duration;
 
-use crate::nwc_balance::get_balance;
-use crate::nwc_info::get_info;
-use crate::nwc_invoice::make_invoice;
-use crate::nwc_keysend::{multi_pay_keysend, pay_keysend};
-use crate::nwc_lookups::{list_transactions, lookup_invoice};
-use crate::nwc_pay::{multi_pay_invoice, pay_invoice};
+use crate::nwc_balance::get_balance_response;
+use crate::nwc_hold::{
+    cancel_hold_invoice_response, make_hold_invoice_response, settle_hold_invoice_response,
+};
+use crate::nwc_info::get_info_response;
+use crate::nwc_invoice::make_invoice_response;
+use crate::nwc_keysend::{multi_pay_keysend, pay_keysend_response};
+use crate::nwc_lookups::{list_transactions_response, lookup_invoice_response};
+use crate::nwc_pay::{multi_pay_invoice, pay_invoice_response};
 use crate::structs::{NwcStore, PluginState};
 use crate::tasks::budget_task;
 use crate::util::{build_capabilities, build_notifications_vec, is_read_only_nwc};
@@ -21,7 +25,9 @@ use nostr_sdk::nostr::Kind;
 use nostr_sdk::nostr::Tag;
 use nostr_sdk::Alphabet;
 use nostr_sdk::Client;
+use nostr_sdk::Event;
 use nostr_sdk::EventBuilder;
+use nostr_sdk::EventId;
 use nostr_sdk::Keys;
 use nostr_sdk::PublicKey;
 use nostr_sdk::RelayPoolNotification;
@@ -244,288 +250,63 @@ async fn nwc_request_handler(
         }
     }
     log::debug!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
-    let use_nip44;
-    let content = match nip44::decrypt(wallet_keys.secret_key(), &client_pubkey, &event.content) {
-        Ok(o) => {
-            use_nip44 = true;
-            o
-        }
-        Err(e) => {
-            log::debug!("Could not decrypt using NIP-44:{e}. Trying NIP-04");
-            match nip04::decrypt(wallet_keys.secret_key(), &client_pubkey, &event.content) {
-                Ok(o) => {
-                    use_nip44 = false;
-                    o
-                }
-                Err(e) => {
-                    log::warn!("Could not decrypt using NIP-04 or NIP-44:{e}");
-                    return Ok(false);
-                }
-            }
-        }
-    };
-    log::debug!("Decrypted:{content}");
-    let request: nip47::Request = match serde_json::from_str(&content) {
-        Ok(o) => o,
-        Err(e) => {
-            log::warn!("Error parsing nip47::Request! {e}");
-            return Ok(false);
-        }
-    };
+    let mut use_nip44 = check_nip44_support(&event);
+
+    let request = decrypt_request(&event.content, &wallet_keys, &client_pubkey, &mut use_nip44)?;
 
     let responses = match request.params {
         nip47::RequestParams::PayInvoice(pay_invoice_request) => {
-            vec![
-                match pay_invoice(plugin.clone(), pay_invoice_request, &label).await {
-                    Ok((o, id)) => (
-                        nip47::Response {
-                            result_type: nip47::Method::PayInvoice,
-                            error: None,
-                            result: Some(nip47::ResponseResult::PayInvoice(o)),
-                        },
-                        id,
-                    ),
-                    Err((e, id)) => (
-                        nip47::Response {
-                            result_type: nip47::Method::PayInvoice,
-                            error: Some(e),
-                            result: None,
-                        },
-                        id,
-                    ),
-                },
-            ]
+            pay_invoice_response(plugin.clone(), pay_invoice_request, &label).await
         }
         nip47::RequestParams::MultiPayInvoice(multi_pay_invoice_request) => {
             multi_pay_invoice(plugin.clone(), multi_pay_invoice_request, &label).await
         }
         nip47::RequestParams::PayKeysend(pay_keysend_request) => {
-            let id = if let Some(i) = pay_keysend_request.id.clone() {
-                i
-            } else {
-                pay_keysend_request.pubkey.clone()
-            };
-            vec![
-                match pay_keysend(plugin.clone(), pay_keysend_request, &label).await {
-                    Ok(o) => (
-                        nip47::Response {
-                            result_type: nip47::Method::PayKeysend,
-                            error: None,
-                            result: Some(nip47::ResponseResult::PayKeysend(o)),
-                        },
-                        Some(id),
-                    ),
-                    Err(e) => (
-                        nip47::Response {
-                            result_type: nip47::Method::PayKeysend,
-                            error: Some(e),
-                            result: None,
-                        },
-                        Some(id),
-                    ),
-                },
-            ]
+            pay_keysend_response(plugin, pay_keysend_request, &label).await
         }
         nip47::RequestParams::MultiPayKeysend(multi_pay_keysend_request) => {
             multi_pay_keysend(plugin.clone(), multi_pay_keysend_request, &label).await
         }
         nip47::RequestParams::MakeInvoice(make_invoice_request) => {
-            vec![
-                match make_invoice(plugin.clone(), make_invoice_request).await {
-                    Ok(o) => (
-                        nip47::Response {
-                            result_type: nip47::Method::MakeInvoice,
-                            error: None,
-                            result: Some(nip47::ResponseResult::MakeInvoice(o)),
-                        },
-                        None,
-                    ),
-                    Err(e) => (
-                        nip47::Response {
-                            result_type: nip47::Method::MakeInvoice,
-                            error: Some(e),
-                            result: None,
-                        },
-                        None,
-                    ),
-                },
-            ]
+            make_invoice_response(plugin.clone(), make_invoice_request).await
         }
         nip47::RequestParams::LookupInvoice(lookup_invoice_request) => {
-            vec![
-                match lookup_invoice(plugin.clone(), lookup_invoice_request).await {
-                    Ok(o) => (
-                        nip47::Response {
-                            result_type: nip47::Method::LookupInvoice,
-                            error: None,
-                            result: Some(nip47::ResponseResult::LookupInvoice(o)),
-                        },
-                        None,
-                    ),
-                    Err(e) => (
-                        nip47::Response {
-                            result_type: nip47::Method::LookupInvoice,
-                            error: Some(e),
-                            result: None,
-                        },
-                        None,
-                    ),
-                },
-            ]
+            lookup_invoice_response(plugin.clone(), lookup_invoice_request).await
         }
         nip47::RequestParams::ListTransactions(list_transactions_request) => {
-            vec![
-                match list_transactions(plugin.clone(), list_transactions_request).await {
-                    Ok(o) => (
-                        nip47::Response {
-                            result_type: nip47::Method::ListTransactions,
-                            error: None,
-                            result: Some(nip47::ResponseResult::ListTransactions(o)),
-                        },
-                        None,
-                    ),
-                    Err(e) => (
-                        nip47::Response {
-                            result_type: nip47::Method::ListTransactions,
-                            error: Some(e),
-                            result: None,
-                        },
-                        None,
-                    ),
-                },
-            ]
+            list_transactions_response(plugin.clone(), list_transactions_request).await
         }
-        nip47::RequestParams::GetBalance => {
-            vec![match get_balance(plugin.clone(), &label).await {
-                Ok(o) => (
-                    nip47::Response {
-                        result_type: nip47::Method::GetBalance,
-                        error: None,
-                        result: Some(nip47::ResponseResult::GetBalance(o)),
-                    },
-                    None,
-                ),
-                Err(e) => (
-                    nip47::Response {
-                        result_type: nip47::Method::GetBalance,
-                        error: Some(e),
-                        result: None,
-                    },
-                    None,
-                ),
-            }]
+        nip47::RequestParams::GetBalance => get_balance_response(plugin.clone(), &label).await,
+        nip47::RequestParams::GetInfo => get_info_response(plugin.clone(), &label).await,
+        nip47::RequestParams::MakeHoldInvoice(make_hold_invoice_request) => {
+            make_hold_invoice_response(plugin.clone(), make_hold_invoice_request, &label).await
         }
-        nip47::RequestParams::GetInfo => {
-            vec![match get_info(plugin.clone(), &label).await {
-                Ok(o) => (
-                    nip47::Response {
-                        result_type: nip47::Method::GetInfo,
-                        error: None,
-                        result: Some(nip47::ResponseResult::GetInfo(o)),
-                    },
-                    None,
-                ),
-                Err(e) => (
-                    nip47::Response {
-                        result_type: nip47::Method::GetInfo,
-                        error: Some(e),
-                        result: None,
-                    },
-                    None,
-                ),
-            }]
+        nip47::RequestParams::CancelHoldInvoice(cancel_hold_invoice_request) => {
+            cancel_hold_invoice_response(plugin.clone(), cancel_hold_invoice_request, &label).await
         }
-        nip47::RequestParams::MakeHoldInvoice(_make_hold_invoice_request) => {
-            vec![(
-                nip47::Response {
-                    result_type: nip47::Method::MakeHoldInvoice,
-                    error: Some(nip47::NIP47Error {
-                        code: nip47::ErrorCode::NotImplemented,
-                        message: "Not implemented".to_owned(),
-                    }),
-                    result: None,
-                },
-                None,
-            )]
-        }
-        nip47::RequestParams::CancelHoldInvoice(_cancel_hold_invoice_request) => {
-            vec![(
-                nip47::Response {
-                    result_type: nip47::Method::CancelHoldInvoice,
-                    error: Some(nip47::NIP47Error {
-                        code: nip47::ErrorCode::NotImplemented,
-                        message: "Not implemented".to_owned(),
-                    }),
-                    result: None,
-                },
-                None,
-            )]
-        }
-        nip47::RequestParams::SettleHoldInvoice(_settle_hold_invoice_request) => {
-            vec![(
-                nip47::Response {
-                    result_type: nip47::Method::SettleHoldInvoice,
-                    error: Some(nip47::NIP47Error {
-                        code: nip47::ErrorCode::NotImplemented,
-                        message: "Not implemented".to_owned(),
-                    }),
-                    result: None,
-                },
-                None,
-            )]
+        nip47::RequestParams::SettleHoldInvoice(settle_hold_invoice_request) => {
+            settle_hold_invoice_response(plugin.clone(), settle_hold_invoice_request, &label).await
         }
     };
     for (response, id) in responses {
-        let response_str = match serde_json::to_string(&response) {
-            Ok(o) => o,
-            Err(e) => {
-                log::warn!("Error serializing response! {e}");
-                continue;
-            }
-        };
-        log::debug!("RESPONSE:{response_str}");
+        let content =
+            match encrypt_response_content(&response, &wallet_keys, &client_pubkey, use_nip44) {
+                Ok(o) => o,
+                Err(e) => {
+                    log::warn!("{e}");
+                    continue;
+                }
+            };
 
-        let content = if use_nip44 {
-            match nip44::encrypt(
-                wallet_keys.secret_key(),
-                &client_pubkey,
-                response_str,
-                nip44::Version::V2,
-            ) {
+        let response_event =
+            match build_response_event(event.id, content, &wallet_keys, client_pubkey, id) {
                 Ok(o) => o,
                 Err(e) => {
-                    log::warn!("Error encrypting response with nip44! {e}");
+                    log::warn!("Error signing reponse event! {e}");
                     continue;
                 }
-            }
-        } else {
-            match nip04::encrypt(wallet_keys.secret_key(), &client_pubkey, response_str) {
-                Ok(o) => o,
-                Err(e) => {
-                    log::warn!("Error encrypting response with nip04! {e}");
-                    continue;
-                }
-            }
-        };
-        let mut response_builder = EventBuilder::new(Kind::WalletConnectResponse, content)
-            .tag(Tag::event(event.id))
-            .tag(Tag::public_key(client_pubkey));
-        if let Some(i) = id {
-            response_builder = response_builder.tag(Tag::custom(
-                TagKind::SingleLetter(SingleLetterTag {
-                    character: Alphabet::D,
-                    uppercase: false,
-                }),
-                vec![i],
-            ));
-        }
-        let response_event = match response_builder.sign_with_keys(&wallet_keys) {
-            Ok(o) => o,
-            Err(e) => {
-                log::warn!("Error signing reponse event! {e}");
-                continue;
-            }
-        };
+            };
+
         let send_result = match client.send_event(&response_event).await {
             Ok(o) => o,
             Err(e) => {
@@ -548,4 +329,126 @@ async fn nwc_request_handler(
     }
 
     Ok(false)
+}
+
+fn check_nip44_support(event: &Event) -> bool {
+    if let Some(encryption_tag) = event
+        .tags
+        .find(TagKind::Custom(Cow::Borrowed("encryption")))
+    {
+        if let Some(enc_tag_content) = encryption_tag.content() {
+            if enc_tag_content.contains("nip44_v2") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn decrypt_request(
+    event_content: &str,
+    wallet_keys: &Keys,
+    client_pubkey: &PublicKey,
+    use_nip44: &mut bool,
+) -> Result<nip47::Request, anyhow::Error> {
+    let content = if *use_nip44 {
+        match nip44::decrypt(wallet_keys.secret_key(), client_pubkey, event_content) {
+            Ok(o) => o,
+            Err(e) => {
+                log::debug!("Could not decrypt using NIP-44:{e}. Trying NIP-04");
+                match nip04::decrypt(wallet_keys.secret_key(), client_pubkey, event_content) {
+                    Ok(o) => {
+                        *use_nip44 = false;
+                        o
+                    }
+                    Err(e) => {
+                        log::warn!("Could not decrypt using NIP-04 or NIP-44:{e}");
+                        return Err(e.into());
+                    }
+                }
+            }
+        }
+    } else {
+        match nip04::decrypt(wallet_keys.secret_key(), client_pubkey, event_content) {
+            Ok(o) => o,
+            Err(e) => {
+                log::debug!("Could not decrypt using NIP-04:{e}. Trying NIP-44");
+                match nip44::decrypt(wallet_keys.secret_key(), client_pubkey, event_content) {
+                    Ok(o) => {
+                        *use_nip44 = true;
+                        o
+                    }
+                    Err(e) => {
+                        log::warn!("Could not decrypt using NIP-04 or NIP-44:{e}");
+                        return Err(e.into());
+                    }
+                }
+            }
+        }
+    };
+    log::debug!("Decrypted:{content}");
+    let request: nip47::Request = match serde_json::from_str(&content) {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("Error parsing nip47::Request! {e}");
+            return Err(e.into());
+        }
+    };
+    Ok(request)
+}
+
+fn encrypt_response_content(
+    response: &nip47::Response,
+    wallet_keys: &Keys,
+    client_pubkey: &PublicKey,
+    use_nip44: bool,
+) -> Result<String, anyhow::Error> {
+    let response_str = match serde_json::to_string(&response) {
+        Ok(o) => o,
+        Err(e) => {
+            return Err(anyhow!("Error serializing response! {e}"));
+        }
+    };
+    log::debug!("RESPONSE:{response_str}");
+    if use_nip44 {
+        match nip44::encrypt(
+            wallet_keys.secret_key(),
+            client_pubkey,
+            response_str,
+            nip44::Version::V2,
+        ) {
+            Ok(o) => Ok(o),
+            Err(e) => Err(anyhow!("Error encrypting response with nip44! {e}")),
+        }
+    } else {
+        match nip04::encrypt(wallet_keys.secret_key(), client_pubkey, response_str) {
+            Ok(o) => Ok(o),
+            Err(e) => Err(anyhow!("Error encrypting response with nip04! {e}")),
+        }
+    }
+}
+
+fn build_response_event(
+    event_id: EventId,
+    content: String,
+    wallet_keys: &Keys,
+    client_pubkey: PublicKey,
+    id: Option<String>,
+) -> Result<Event, anyhow::Error> {
+    let mut response_builder = EventBuilder::new(Kind::WalletConnectResponse, content)
+        .tag(Tag::event(event_id))
+        .tag(Tag::public_key(client_pubkey));
+    if let Some(i) = id {
+        response_builder = response_builder.tag(Tag::custom(
+            TagKind::SingleLetter(SingleLetterTag {
+                character: Alphabet::D,
+                uppercase: false,
+            }),
+            vec![i],
+        ));
+    }
+    match response_builder.sign_with_keys(wallet_keys) {
+        Ok(o) => Ok(o),
+        Err(e) => Err(e.into()),
+    }
 }
