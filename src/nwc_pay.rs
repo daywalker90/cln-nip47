@@ -53,9 +53,6 @@ pub async fn pay_invoice(
         i
     } else {
         match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                invoice_decoded.invoice_payment_hash.unwrap()
-            }
             cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
                 invoice_decoded.payment_hash.unwrap().to_string()
             }
@@ -64,9 +61,6 @@ pub async fn pay_invoice(
     };
 
     let invoice_amt_msat = match invoice_decoded.item_type {
-        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-            invoice_decoded.invoice_amount_msat.unwrap().msat()
-        }
         cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
             invoice_decoded.amount_msat.unwrap().msat()
         }
