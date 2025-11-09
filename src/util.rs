@@ -42,10 +42,10 @@ pub fn budget_amount_check(
     Ok(())
 }
 
-pub async fn load_nwc_store(rpc: &mut ClnRpc, label: &String) -> Result<NwcStore, anyhow::Error> {
+pub async fn load_nwc_store(rpc: &mut ClnRpc, label: &str) -> Result<NwcStore, anyhow::Error> {
     let nwc_store_store = rpc
         .call_typed(&ListdatastoreRequest {
-            key: Some(vec![PLUGIN_NAME.to_owned(), label.clone()]),
+            key: Some(vec![PLUGIN_NAME.to_owned(), label.to_owned()]),
         })
         .await?
         .datastore;
@@ -62,11 +62,11 @@ pub async fn load_nwc_store(rpc: &mut ClnRpc, label: &String) -> Result<NwcStore
 
 pub async fn update_nwc_store(
     rpc: &mut ClnRpc,
-    label: &String,
+    label: &str,
     nwc_store: NwcStore,
 ) -> Result<(), anyhow::Error> {
     rpc.call_typed(&DatastoreRequest {
-        key: vec![PLUGIN_NAME.to_owned(), label.clone()],
+        key: vec![PLUGIN_NAME.to_owned(), label.to_owned()],
         generation: None,
         hex: None,
         mode: Some(DatastoreMode::CREATE_OR_REPLACE),

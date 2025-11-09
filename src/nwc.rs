@@ -316,7 +316,7 @@ async fn nwc_request_handler(
                             error: None,
                             result: Some(nip47::ResponseResult::PayKeysend(o)),
                         },
-                        id,
+                        Some(id),
                     ),
                     Err(e) => (
                         nip47::Response {
@@ -324,7 +324,7 @@ async fn nwc_request_handler(
                             error: Some(e),
                             result: None,
                         },
-                        id,
+                        Some(id),
                     ),
                 },
             ]
@@ -341,7 +341,7 @@ async fn nwc_request_handler(
                             error: None,
                             result: Some(nip47::ResponseResult::MakeInvoice(o)),
                         },
-                        String::new(),
+                        None,
                     ),
                     Err(e) => (
                         nip47::Response {
@@ -349,7 +349,7 @@ async fn nwc_request_handler(
                             error: Some(e),
                             result: None,
                         },
-                        String::new(),
+                        None,
                     ),
                 },
             ]
@@ -363,7 +363,7 @@ async fn nwc_request_handler(
                             error: None,
                             result: Some(nip47::ResponseResult::LookupInvoice(o)),
                         },
-                        String::new(),
+                        None,
                     ),
                     Err(e) => (
                         nip47::Response {
@@ -371,7 +371,7 @@ async fn nwc_request_handler(
                             error: Some(e),
                             result: None,
                         },
-                        String::new(),
+                        None,
                     ),
                 },
             ]
@@ -385,7 +385,7 @@ async fn nwc_request_handler(
                             error: None,
                             result: Some(nip47::ResponseResult::ListTransactions(o)),
                         },
-                        String::new(),
+                        None,
                     ),
                     Err(e) => (
                         nip47::Response {
@@ -393,7 +393,7 @@ async fn nwc_request_handler(
                             error: Some(e),
                             result: None,
                         },
-                        String::new(),
+                        None,
                     ),
                 },
             ]
@@ -406,7 +406,7 @@ async fn nwc_request_handler(
                         error: None,
                         result: Some(nip47::ResponseResult::GetBalance(o)),
                     },
-                    String::new(),
+                    None,
                 ),
                 Err(e) => (
                     nip47::Response {
@@ -414,7 +414,7 @@ async fn nwc_request_handler(
                         error: Some(e),
                         result: None,
                     },
-                    String::new(),
+                    None,
                 ),
             }]
         }
@@ -426,7 +426,7 @@ async fn nwc_request_handler(
                         error: None,
                         result: Some(nip47::ResponseResult::GetInfo(o)),
                     },
-                    String::new(),
+                    None,
                 ),
                 Err(e) => (
                     nip47::Response {
@@ -434,7 +434,7 @@ async fn nwc_request_handler(
                         error: Some(e),
                         result: None,
                     },
-                    String::new(),
+                    None,
                 ),
             }]
         }
@@ -448,7 +448,7 @@ async fn nwc_request_handler(
                     }),
                     result: None,
                 },
-                String::new(),
+                None,
             )]
         }
         nip47::RequestParams::CancelHoldInvoice(_cancel_hold_invoice_request) => {
@@ -461,7 +461,7 @@ async fn nwc_request_handler(
                     }),
                     result: None,
                 },
-                String::new(),
+                None,
             )]
         }
         nip47::RequestParams::SettleHoldInvoice(_settle_hold_invoice_request) => {
@@ -474,7 +474,7 @@ async fn nwc_request_handler(
                     }),
                     result: None,
                 },
-                String::new(),
+                None,
             )]
         }
     };
@@ -513,13 +513,13 @@ async fn nwc_request_handler(
         let mut response_builder = EventBuilder::new(Kind::WalletConnectResponse, content)
             .tag(Tag::event(event.id))
             .tag(Tag::public_key(client_pubkey));
-        if !id.is_empty() {
+        if let Some(i) = id {
             response_builder = response_builder.tag(Tag::custom(
                 TagKind::SingleLetter(SingleLetterTag {
                     character: Alphabet::D,
                     uppercase: false,
                 }),
-                vec![id],
+                vec![i],
             ));
         }
         let response_event = match response_builder.sign_with_keys(&wallet_keys) {

@@ -16,7 +16,7 @@ use crate::{
 pub async fn pay_keysend(
     plugin: Plugin<PluginState>,
     params: nip47::PayKeysendRequest,
-    label: &String,
+    label: &str,
 ) -> Result<nip47::PayKeysendResponse, nip47::NIP47Error> {
     let mut rpc = plugin.state().rpc_lock.lock().await;
 
@@ -122,8 +122,8 @@ pub async fn pay_keysend(
 pub async fn multi_pay_keysend(
     plugin: Plugin<PluginState>,
     params: nip47::MultiPayKeysendRequest,
-    label: &String,
-) -> Vec<(nip47::Response, String)> {
+    label: &str,
+) -> Vec<(nip47::Response, Option<String>)> {
     let mut responses = Vec::new();
     for pay in params.keysends {
         let result = pay_keysend(plugin.clone(), pay.clone(), label).await;
@@ -135,7 +135,7 @@ pub async fn multi_pay_keysend(
                     error: None,
                     result: Some(nip47::ResponseResult::MultiPayKeysend(resp)),
                 },
-                id,
+                Some(id),
             ),
             Err(e) => (
                 nip47::Response {
@@ -143,7 +143,7 @@ pub async fn multi_pay_keysend(
                     error: Some(e),
                     result: None,
                 },
-                id,
+                Some(id),
             ),
         };
         responses.push(response_res);

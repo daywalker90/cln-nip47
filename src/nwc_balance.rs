@@ -6,7 +6,7 @@ use crate::{structs::PluginState, util::load_nwc_store};
 
 pub async fn get_balance(
     plugin: Plugin<PluginState>,
-    label: &String,
+    label: &str,
 ) -> Result<nip47::GetBalanceResponse, nip47::NIP47Error> {
     let mut rpc = plugin.state().rpc_lock.lock().await;
 

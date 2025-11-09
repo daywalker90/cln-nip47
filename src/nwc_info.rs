@@ -8,7 +8,7 @@ use nostr_sdk::nips::nip47;
 
 pub async fn get_info(
     plugin: Plugin<PluginState>,
-    label: &String,
+    label: &str,
 ) -> Result<nip47::GetInfoResponse, nip47::NIP47Error> {
     let mut rpc = plugin.state().rpc_lock.lock().await;
 
