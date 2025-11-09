@@ -44,7 +44,7 @@ pub async fn budget_task(
                 log::info!("Stopping budget task for {label}");
                 break;
             }
-            _ = time::sleep(Duration::from_secs(next_reset)) => {
+            () = time::sleep(Duration::from_secs(next_reset)) => {
                 log::info!("Refreshing budget for {label}");
                 *nwc_store.budget_msat
                     .as_mut()
