@@ -8,6 +8,8 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
+pub const NOT_INV_ERR: &str = "Not an invoice or invalid invoice";
+
 #[derive(Clone)]
 pub struct PluginState {
     pub config: Arc<Mutex<Config>>,
