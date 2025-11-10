@@ -1,19 +1,19 @@
 # Changelog
 
-## Unreleased
+## [0.1.6] 2025-11-10
 
 ### Added
-- include pending and failed payments in ``list_transactions``, now that ``state`` exists wallets can display these more meaningfully
-- include expired invoices in ``list_transactions``, now that ``state`` exists wallets can display these more meaningfully
+- Include pending and failed payments in ``list_transactions``, now that ``state`` exists wallets can display these more meaningfully
+- Include expired invoices in ``list_transactions``, now that ``state`` exists wallets can display these more meaningfully
 
 ### Changed
-- upgrade ``nostr_sdk`` to ``v0.44`` and implement new fields in sync with the nip47 spec, e.g. ``state`` for transactions
-- improved handling of events after a restart
+- Upgrade ``nostr_sdk`` to ``v0.44`` and implement new fields in sync with the ``nip47`` spec, e.g. ``state`` for transactions
+- Only process events that were created after ``cln-nip47`` started so it does not sent duplicate responses
 
 ### Fixed
-- some minor fixes around bolt11 invoices with 0 amount (aka any amount)
+- Some minor fixes around ``bolt11`` invoices with 0 amount (aka any amount)
 - Don't ignore `offset` parameter in ``list_transactions``
-- add ``notifications`` to the ``info_event``'s ``content`` if enabled
+- Also add ``notifications`` to the ``info_event``'s ``content`` if enabled to be in line with the spec
 
 ## [0.1.5] 2025-07-24
 
