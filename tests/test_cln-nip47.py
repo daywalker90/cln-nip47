@@ -1342,12 +1342,16 @@ async def nostr_client(nostr_relay):
     await client.disconnect()
 
 
-@pytest_asyncio.fixture(scope="module")
-async def nostr_relay(test_base_dir):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    dynamic_port = s.getsockname()[1]
-    s.close()
+@pytest_asyncio.fixture(scope="session")
+async def nostr_relay(test_base_dir, worker_id):
+    worker_index = int(worker_id[2:]) if worker_id and worker_id.startswith("gw") else 0
+    base_port = 50000 + (worker_index * 100)
+
+    LOGGER.info(
+        f"Starting nostr_relay for worker {worker_index} (port base {base_port}) at {time.time()}"
+    )
+
+    dynamic_port = get_free_port(base_port)
 
     try:
         config_file = pkg_resources.files("nostr_relay").joinpath("config.yaml")
@@ -1375,7 +1379,8 @@ async def nostr_relay(test_base_dir):
     with open(config_file, "w") as file:
         yaml.safe_dump(config, file)
 
-    LOGGER.info(f"{config_file}")
+    LOGGER.info(f"Generated config: {config_file}")
+
     process = subprocess.Popen(
         ["nostr-relay", "-c", config_file, "serve"],
         stdout=subprocess.PIPE,
@@ -1399,6 +1404,18 @@ async def nostr_relay(test_base_dir):
 
     stdout_thread.join()
     stderr_thread.join()
+
+
+def get_free_port(start_port=50000):
+    for port in range(start_port, start_port + 100):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                s.listen(1)
+                return port
+            except OSError:
+                continue
+    raise RuntimeError(f"No free ports found starting from {start_port}")
 
 
 def log_pipe(pipe, logger, log_level):
