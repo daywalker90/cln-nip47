@@ -386,7 +386,7 @@ fn decrypt_request(
             }
         }
     };
-    log::debug!("Decrypted:{content}");
+    log::debug!("Decrypted (nip44_v2:{use_nip44}):{content}");
     let request: nip47::Request = match serde_json::from_str(&content) {
         Ok(o) => o,
         Err(e) => {
