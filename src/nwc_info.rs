@@ -1,9 +1,11 @@
 use cln_plugin::Plugin;
 use cln_rpc::model::requests::GetinfoRequest;
-
-use crate::structs::PluginState;
-use crate::util::{build_methods_vec, build_notifications_vec, is_read_only_nwc, load_nwc_store};
 use nostr_sdk::nips::nip47;
+
+use crate::{
+    structs::PluginState,
+    util::{build_methods_vec, build_notifications_vec, is_read_only_nwc, load_nwc_store},
+};
 
 pub async fn get_info_response(
     plugin: Plugin<PluginState>,

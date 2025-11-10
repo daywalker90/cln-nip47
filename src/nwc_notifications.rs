@@ -2,23 +2,31 @@ use std::str::FromStr;
 
 use anyhow::anyhow;
 use cln_plugin::Plugin;
-use cln_rpc::model::requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest};
-use cln_rpc::model::responses::{
-    DecodeResponse, ListinvoicesInvoices, ListinvoicesInvoicesStatus, ListpaysPays,
-    ListpaysPaysStatus,
+use cln_rpc::{
+    model::{
+        requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest},
+        responses::{
+            DecodeResponse,
+            ListinvoicesInvoices,
+            ListinvoicesInvoicesStatus,
+            ListpaysPays,
+            ListpaysPaysStatus,
+        },
+    },
+    primitives::Sha256,
+    ClnRpc,
 };
-use cln_rpc::primitives::Sha256;
-use cln_rpc::ClnRpc;
+use nostr_sdk::{
+    nips::nip47,
+    nostr::{key::PublicKey, EventBuilder, Kind, Tag},
+    Client,
+    Timestamp,
+};
 
-use crate::structs::{PluginState, NOT_INV_ERR};
-use crate::OPT_NOTIFICATIONS;
-
-use nostr_sdk::nips::nip47;
-use nostr_sdk::nostr::key::PublicKey;
-use nostr_sdk::nostr::EventBuilder;
-use nostr_sdk::nostr::Kind;
-use nostr_sdk::nostr::Tag;
-use nostr_sdk::{Client, Timestamp};
+use crate::{
+    structs::{PluginState, NOT_INV_ERR},
+    OPT_NOTIFICATIONS,
+};
 
 pub async fn payment_received_handler(
     plugin: Plugin<PluginState>,

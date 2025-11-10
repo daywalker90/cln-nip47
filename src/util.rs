@@ -4,12 +4,15 @@ use cln_rpc::{
     model::requests::{DatastoreMode, DatastoreRequest, ListdatastoreRequest},
     ClnRpc,
 };
-
 use nostr_sdk::nips::nip47;
 
 use crate::{
     structs::{NwcStore, PluginState},
-    OPT_NOTIFICATIONS, PLUGIN_NAME, WALLET_NOTIFICATIONS, WALLET_PAY_METHODS, WALLET_READ_METHODS,
+    OPT_NOTIFICATIONS,
+    PLUGIN_NAME,
+    WALLET_NOTIFICATIONS,
+    WALLET_PAY_METHODS,
+    WALLET_READ_METHODS,
 };
 
 pub fn budget_amount_check(

@@ -5,14 +5,16 @@ use cln_rpc::{
     model::{
         requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest},
         responses::{
-            ListinvoicesInvoices, ListinvoicesInvoicesStatus, ListpaysPays, ListpaysPaysStatus,
+            ListinvoicesInvoices,
+            ListinvoicesInvoicesStatus,
+            ListpaysPays,
+            ListpaysPaysStatus,
         },
     },
     primitives::Sha256,
     ClnRpc,
 };
-use nostr_sdk::nips::nip47;
-use nostr_sdk::Timestamp;
+use nostr_sdk::{nips::nip47, Timestamp};
 
 use crate::structs::{PluginState, NOT_INV_ERR};
 

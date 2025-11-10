@@ -1,7 +1,7 @@
 use cln_plugin::Plugin;
+use nostr_sdk::nips::nip47;
 
 use crate::structs::PluginState;
-use nostr_sdk::nips::nip47;
 
 pub async fn make_hold_invoice_response(
     _plugin: Plugin<PluginState>,

@@ -7,7 +7,8 @@ use cln_rpc::{
         responses::DecodeResponse,
     },
     primitives::{Amount, Secret},
-    ClnRpc, RpcError,
+    ClnRpc,
+    RpcError,
 };
 use nostr_sdk::nips::nip47;
 use tokio::time;

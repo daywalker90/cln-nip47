@@ -1,9 +1,7 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
 use cln_rpc::ClnRpc;
-use nostr_sdk::client;
-use nostr_sdk::nips::nip47;
-use nostr_sdk::nostr;
+use nostr_sdk::{client, nips::nip47, nostr};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;

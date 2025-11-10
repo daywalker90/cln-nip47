@@ -1,44 +1,45 @@
-use std::borrow::Cow;
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
-use crate::nwc_balance::get_balance_response;
-use crate::nwc_hold::{
-    cancel_hold_invoice_response, make_hold_invoice_response, settle_hold_invoice_response,
-};
-use crate::nwc_info::get_info_response;
-use crate::nwc_invoice::make_invoice_response;
-use crate::nwc_keysend::{multi_pay_keysend, pay_keysend_response};
-use crate::nwc_lookups::{list_transactions_response, lookup_invoice_response};
-use crate::nwc_pay::{multi_pay_invoice, pay_invoice_response};
-use crate::structs::{NwcStore, PluginState};
-use crate::tasks::budget_task;
-use crate::util::{build_capabilities, build_notifications_vec, is_read_only_nwc};
-use crate::OPT_NOTIFICATIONS;
 use anyhow::anyhow;
 use cln_plugin::Plugin;
-use nostr_sdk::client;
-use nostr_sdk::nips::nip04;
-use nostr_sdk::nips::nip44;
-use nostr_sdk::nips::nip47;
-use nostr_sdk::nostr::Filter;
-use nostr_sdk::nostr::Kind;
-use nostr_sdk::nostr::Tag;
-use nostr_sdk::Alphabet;
-use nostr_sdk::Client;
-use nostr_sdk::Event;
-use nostr_sdk::EventBuilder;
-use nostr_sdk::EventId;
-use nostr_sdk::Keys;
-use nostr_sdk::PublicKey;
-use nostr_sdk::RelayPoolNotification;
-use nostr_sdk::RelayStatus;
-use nostr_sdk::SecretKey;
-use nostr_sdk::SignerError;
-use nostr_sdk::SingleLetterTag;
-use nostr_sdk::TagKind;
-use nostr_sdk::Timestamp;
-use tokio::sync::oneshot;
-use tokio::time;
+use nostr_sdk::{
+    client,
+    nips::{nip04, nip44, nip47},
+    nostr::{Filter, Kind, Tag},
+    Alphabet,
+    Client,
+    Event,
+    EventBuilder,
+    EventId,
+    Keys,
+    PublicKey,
+    RelayPoolNotification,
+    RelayStatus,
+    SecretKey,
+    SignerError,
+    SingleLetterTag,
+    TagKind,
+    Timestamp,
+};
+use tokio::{sync::oneshot, time};
+
+use crate::{
+    nwc_balance::get_balance_response,
+    nwc_hold::{
+        cancel_hold_invoice_response,
+        make_hold_invoice_response,
+        settle_hold_invoice_response,
+    },
+    nwc_info::get_info_response,
+    nwc_invoice::make_invoice_response,
+    nwc_keysend::{multi_pay_keysend, pay_keysend_response},
+    nwc_lookups::{list_transactions_response, lookup_invoice_response},
+    nwc_pay::{multi_pay_invoice, pay_invoice_response},
+    structs::{NwcStore, PluginState},
+    tasks::budget_task,
+    util::{build_capabilities, build_notifications_vec, is_read_only_nwc},
+    OPT_NOTIFICATIONS,
+};
 
 pub async fn run_nwc(
     plugin: Plugin<PluginState>,

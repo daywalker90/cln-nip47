@@ -3,10 +3,10 @@ use std::{path::Path, time::Duration};
 use anyhow::anyhow;
 use cln_plugin::{
     options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
-    Builder, Plugin,
+    Builder,
+    Plugin,
 };
 use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc};
-
 use nostr_sdk::nips::nip47;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
