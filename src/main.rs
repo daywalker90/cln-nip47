@@ -31,6 +31,8 @@ mod structs;
 mod tasks;
 mod util;
 
+pub const STARTUP_DELAY: u64 = 1;
+
 const OPT_RELAYS: StringArrayConfigOption = ConfigOption::new_str_arr_no_default(
     "nip47-relays",
     "Nostr relays used for nwc. Can be stated multiple times.",
@@ -110,7 +112,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
         // Make sure incase of rapid nip47-create and plugin restarts info_events
         // have a different timestamp and therefore ID so relays don't disconnect us
-        time::sleep(Duration::from_secs(1)).await;
+        time::sleep(Duration::from_secs(STARTUP_DELAY)).await;
 
         match load_nwcs(plugin.clone(), &mut rpc).await {
             Ok(()) => log::info!("All NWC's loaded"),

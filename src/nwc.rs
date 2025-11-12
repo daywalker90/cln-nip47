@@ -39,6 +39,7 @@ use crate::{
     tasks::budget_task,
     util::{build_capabilities, build_notifications_vec, is_read_only_nwc},
     OPT_NOTIFICATIONS,
+    STARTUP_DELAY,
 };
 
 pub async fn run_nwc(
@@ -112,7 +113,7 @@ pub async fn run_nwc(
             let filter = Filter::new()
                 .kind(Kind::WalletConnectRequest)
                 .author(client_pubkey)
-                .since(Timestamp::now() - 1);
+                .since(Timestamp::now() - STARTUP_DELAY - 1);
 
             if let Err(e) = client_clone.subscribe(filter, None).await {
                 log::warn!("Could not subscribe to nwc events! {e}");
