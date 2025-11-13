@@ -807,7 +807,7 @@ checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
 [[package]]
 name = "nostr"
 version = "0.44.0"
-source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#829d51d2594ef14dc1499b8961514b671c27bf05"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "aes",
  "base64",
@@ -831,7 +831,7 @@ dependencies = [
 [[package]]
 name = "nostr-database"
 version = "0.44.0"
-source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#829d51d2594ef14dc1499b8961514b671c27bf05"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "lru",
  "nostr",
@@ -841,7 +841,7 @@ dependencies = [
 [[package]]
 name = "nostr-gossip"
 version = "0.44.0"
-source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#829d51d2594ef14dc1499b8961514b671c27bf05"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "nostr",
 ]
@@ -849,7 +849,7 @@ dependencies = [
 [[package]]
 name = "nostr-relay-pool"
 version = "0.44.0"
-source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#829d51d2594ef14dc1499b8961514b671c27bf05"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "async-utility",
  "async-wsocket",
@@ -866,7 +866,7 @@ dependencies = [
 [[package]]
 name = "nostr-sdk"
 version = "0.44.0"
-source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#829d51d2594ef14dc1499b8961514b671c27bf05"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "async-utility",
  "nostr",
