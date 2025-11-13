@@ -4,7 +4,7 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
         requests::{DecodeRequest, FetchinvoiceRequest, OfferRequest, PayRequest, XpayRequest},
-        responses::DecodeResponse,
+        responses::{DecodeResponse, FetchinvoiceResponse},
     },
     primitives::{Amount, Secret},
     ClnRpc,
@@ -196,11 +196,13 @@ async fn pay_offer(
 ) -> Result<(nip47::PayOfferResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
     let mut rpc = plugin.state().rpc_lock.lock().await;
 
-    let decoded_invoice = fetch_invoice(&mut rpc, &params).await?;
+    let fetch_invoice_response = fetch_invoice(&mut rpc, &params).await?;
 
-    let id = get_payment_id(&params, &decoded_invoice)?;
+    let decoded_bolt12 = decode_bolt12_invoice(&mut rpc, &params, &fetch_invoice_response).await?;
 
-    let invoice_amt_msat = get_invoice_amount_msat(&decoded_invoice, &id)?;
+    let id = get_payment_id(&params, &decoded_bolt12)?;
+
+    let invoice_amt_msat = get_invoice_amount_msat(&decoded_bolt12, &params, &id)?;
 
     let nwc_store =
         load_nwc_and_check_budget(&mut rpc, label, &params, invoice_amt_msat, &id).await?;
@@ -209,22 +211,36 @@ async fn pay_offer(
     let use_xpay = check_cln_version(&my_version, &id)?;
 
     if use_xpay {
-        pay_with_xpay_full(&mut rpc, params, label, nwc_store, &id).await
+        pay_with_xpay_full(
+            &mut rpc,
+            fetch_invoice_response.invoice,
+            label,
+            nwc_store,
+            &id,
+        )
+        .await
     } else {
-        pay_with_legacy_full(&mut rpc, params, label, nwc_store, &id).await
+        pay_with_legacy_full(
+            &mut rpc,
+            fetch_invoice_response.invoice,
+            label,
+            nwc_store,
+            &id,
+        )
+        .await
     }
 }
 
 async fn fetch_invoice(
     rpc: &mut ClnRpc,
     params: &nip47::PayOfferRequest,
-) -> Result<DecodeResponse, (nip47::NIP47Error, Option<String>)> {
+) -> Result<FetchinvoiceResponse, (nip47::NIP47Error, Option<String>)> {
     let bolt12_invoice = rpc
         .call_typed(&FetchinvoiceRequest {
             amount_msat: params.amount.map(Amount::from_msat),
             bip353: None,
             payer_metadata: None,
-            payer_note: None,
+            payer_note: params.payer_note.clone(),
             quantity: None,
             recurrence_counter: None,
             recurrence_label: None,
@@ -242,9 +258,17 @@ async fn fetch_invoice(
                 params.id.clone(),
             )
         })?;
+    Ok(bolt12_invoice)
+}
+
+async fn decode_bolt12_invoice(
+    rpc: &mut ClnRpc,
+    params: &nip47::PayOfferRequest,
+    fetch_invoice_resp: &FetchinvoiceResponse,
+) -> Result<DecodeResponse, (nip47::NIP47Error, Option<String>)> {
     let invoice_decoded = rpc
         .call_typed(&DecodeRequest {
-            string: bolt12_invoice.invoice.clone(),
+            string: fetch_invoice_resp.invoice.clone(),
         })
         .await
         .map_err(|e| {
@@ -256,7 +280,6 @@ async fn fetch_invoice(
                 params.id.clone(),
             )
         })?;
-
     Ok(invoice_decoded)
 }
 
@@ -286,10 +309,11 @@ fn get_payment_id(
 }
 
 fn get_invoice_amount_msat(
-    decoded_invoice: &DecodeResponse,
+    invoice_decoded: &DecodeResponse,
+    params: &nip47::PayOfferRequest,
     id: &str,
 ) -> Result<u64, (nip47::NIP47Error, Option<String>)> {
-    decoded_invoice
+    let amt = invoice_decoded
         .invoice_amount_msat
         .as_ref()
         .ok_or_else(|| {
@@ -301,7 +325,20 @@ fn get_invoice_amount_msat(
                 Some(id.to_owned()),
             )
         })
-        .map(Amount::msat)
+        .map(Amount::msat)?;
+    if let Some(a) = params.amount {
+        if amt != a {
+            return Err((
+                nip47::NIP47Error {
+                    code: nip47::ErrorCode::Internal,
+                    message: "amount in decoded bolt12 invoice does not match amount in request"
+                        .to_owned(),
+                },
+                Some(id.to_owned()),
+            ));
+        }
+    }
+    Ok(amt)
 }
 
 async fn load_nwc_and_check_budget(
@@ -450,20 +487,20 @@ fn map_cln_error_to_nip47(
 
 async fn pay_with_xpay_full(
     rpc: &mut ClnRpc,
-    params: nip47::PayOfferRequest,
+    bolt12_invoice: String,
     label: &str,
     mut nwc_store: NwcStore,
     id: &str,
 ) -> Result<(nip47::PayOfferResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
     let payment_result = rpc
         .call_typed(&XpayRequest {
-            amount_msat: params.amount.map(Amount::from_msat),
+            amount_msat: None,
             maxdelay: None,
             maxfee: None,
             partial_msat: None,
             retry_for: None,
             layers: None,
-            invstring: params.offer,
+            invstring: bolt12_invoice,
         })
         .await
         .map_err(|e| map_cln_error_to_nip47(&e, id, true))?;
@@ -486,14 +523,14 @@ async fn pay_with_xpay_full(
 
 async fn pay_with_legacy_full(
     rpc: &mut ClnRpc,
-    params: nip47::PayOfferRequest,
+    bolt12_invoice: String,
     label: &str,
     mut nwc_store: NwcStore,
     id: &str,
 ) -> Result<(nip47::PayOfferResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
     let payment_result = rpc
         .call_typed(&PayRequest {
-            amount_msat: params.amount.map(Amount::from_msat),
+            amount_msat: None,
             description: None,
             exemptfee: None,
             label: None,
@@ -505,7 +542,7 @@ async fn pay_with_legacy_full(
             retry_for: None,
             riskfactor: None,
             exclude: None,
-            bolt11: params.offer,
+            bolt11: bolt12_invoice,
         })
         .await
         .map_err(|e| map_cln_error_to_nip47(&e, id, false))?;

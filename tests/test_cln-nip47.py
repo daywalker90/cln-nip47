@@ -1270,6 +1270,8 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
         "method": "pay_offer",
         "params": {
             "offer": offer1["bolt12"],
+            "amount": 3000,
+            "payer_note": "for pizza",
         },
     }
     json_content = json.dumps(content)
@@ -1279,6 +1281,10 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
     assert len(success_events) == 1
 
     pay = l1.rpc.call("listpays", {})["pays"][0]
+    decoded_pay_inv = l2.rpc.call(
+        "listinvoices", {"payment_hash": pay["payment_hash"]}
+    )["invoices"][0]
+    assert decoded_pay_inv["invreq_payer_note"] == "for pizza"
     assert success_events[0]["result"]["preimage"] == pay["preimage"]
 
     offer2 = l2.rpc.call(
