@@ -193,7 +193,7 @@ pub async fn payment_sent_handler(
 
     let mut rpc = plugin.state().rpc_lock.lock().await;
 
-    let pays_resp = rpc
+    let mut pays_resp = rpc
         .call_typed(&ListpaysRequest {
             bolt11: None,
             index: None,
@@ -205,13 +205,11 @@ pub async fn payment_sent_handler(
         .await?
         .pays;
 
+    pays_resp.retain(|p| p.status == ListpaysPaysStatus::COMPLETE);
+
     let pay = pays_resp
         .first()
-        .ok_or_else(|| anyhow!("payment not found"))?;
-
-    if pay.status != ListpaysPaysStatus::COMPLETE {
-        return Err(anyhow!("Payment not complete"));
-    }
+        .ok_or_else(|| anyhow!("complete payment not found"))?;
 
     let notification = make_payment_sent_from_listpays(pay, &mut rpc).await?;
 

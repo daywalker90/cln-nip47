@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.7] 2025-11-27
+
+### Fixed
+- If there were failed payment attempts before success the ``payment_sent`` notification might not have been sent
+
 ## [0.1.6] 2025-11-10
 
 ### Added
