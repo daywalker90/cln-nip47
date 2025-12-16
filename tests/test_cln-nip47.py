@@ -3,6 +3,7 @@ import importlib.resources as pkg_resources
 import json
 import logging
 import socket
+import secrets
 import subprocess
 import time
 from datetime import datetime, timedelta
@@ -14,7 +15,7 @@ import pytest_asyncio
 import yaml
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import RpcError, wait_for
-from util import generate_random_label, get_plugin  # noqa: F401
+from util import generate_random_label, get_plugin, get_hold  # noqa: F401
 
 from nostr_sdk import (
     Alphabet,
@@ -1323,6 +1324,606 @@ async def test_budget_command(node_factory, get_plugin, nostr_client):  # noqa: 
         events_vec[0].tags().find(TagKind.UNKNOWN("notifications")).content()
         == "payment_received payment_sent"
     )
+
+
+@pytest.mark.asyncio
+async def test_hold_invoice(
+    node_factory,
+    executor,
+    get_plugin,  # noqa: F811
+    get_hold,  # noqa: F811
+    nostr_client,
+):
+    nostr_client, relay_port = nostr_client
+    url = f"127.0.0.1:{relay_port}"
+    l1, l2 = node_factory.line_graph(
+        2,
+        wait_for_announce=True,
+        opts=[
+            {
+                "log-level": "debug",
+                "may_reconnect": True,
+            },
+            {
+                "log-level": "debug",
+                "plugin": get_plugin,
+                "important-plugin": get_hold,
+                "nip47-relays": f"ws://{url}",
+                "may_reconnect": True,
+            },
+        ],
+    )
+    uri_str = l2.rpc.call("nip47-create", ["test1", 3010])["uri"]
+    LOGGER.info(uri_str)
+    uri = NostrWalletConnectUri.parse(uri_str)
+
+    nwc = Nwc(uri)
+
+    preimage = secrets.token_hex(32)
+    payment_hash = hashlib.sha256(bytes.fromhex(preimage)).hexdigest()
+    LOGGER.info(f"preimage: {preimage}")
+    LOGGER.info(f"payment_hash: {payment_hash}")
+    content = {
+        "method": "make_hold_invoice",
+        "params": {
+            "amount": 5000,
+            "payment_hash": payment_hash,
+        },
+    }
+    content = json.dumps(content)
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    client = Client(signer)
+    relay_url = RelayUrl.parse(f"ws://{url}")
+    await client.add_relay(relay_url)
+    await client.connect()
+    await client.send_event(event)
+
+    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 1
+    error_events = []
+    success_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+
+    assert success_events[0]["result_type"] == "make_hold_invoice"
+    assert success_events[0]["result"]["payment_hash"] == payment_hash
+    assert success_events[0]["result"]["type"] == "incoming"
+    assert success_events[0]["result"]["invoice"] is not None
+    invoice1 = success_events[0]["result"]["invoice"]
+    assert "description" not in success_events[0]["result"]
+    assert "description_hash" not in success_events[0]["result"]
+    assert success_events[0]["result"]["amount"] == 5000
+    invoice1_created_at = pytest.approx(int(time.time()), abs=1)
+    assert success_events[0]["result"]["created_at"] == invoice1_created_at
+    invoice1_expires_at = pytest.approx(int(time.time()) + 3600, abs=1)
+    assert success_events[0]["result"]["expires_at"] == invoice1_expires_at
+    assert "metadata" not in success_events[0]["result"]
+
+    lookup_hold = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=payment_hash,
+            invoice=None,
+        )
+    )
+    assert lookup_hold.invoice == success_events[0]["result"]["invoice"]
+    assert lookup_hold.amount == 5000
+    assert lookup_hold.description is None
+    assert lookup_hold.created_at.as_secs() == success_events[0]["result"]["created_at"]
+    assert lookup_hold.description_hash is None
+    assert lookup_hold.expires_at.as_secs() == success_events[0]["result"]["expires_at"]
+    assert lookup_hold.fees_paid == 0
+    assert lookup_hold.metadata is None
+    assert lookup_hold.preimage is None
+    assert lookup_hold.payment_hash == payment_hash
+    assert lookup_hold.transaction_type.name == "INCOMING"
+    assert lookup_hold.state.name == "PENDING"
+    assert lookup_hold.settled_at is None
+
+    LOGGER.info("Submitting xpay command")
+    executor.submit(l1.rpc.call, "xpay", [success_events[0]["result"]["invoice"]])
+    LOGGER.info("Continue during xpay")
+
+    response_filter = Filter().kind(Kind(23196)).author(uri.public_key())
+    events = await nostr_client.fetch_events(
+        response_filter, timeout=timedelta(seconds=10)
+    )
+    start_time = datetime.now()
+    LOGGER.info(f"Got {events.len()} events")
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await nostr_client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+        LOGGER.info(f"Got {events.len()} events")
+    assert events.len() == 1
+    hold_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if content["notification_type"] == "hold_invoice_accepted":
+            hold_events.append(content)
+        assert content["notification"]["payment_hash"] == payment_hash
+
+    lookup_hold = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=None,
+            invoice=invoice1,
+        )
+    )
+    assert lookup_hold.invoice == invoice1
+    assert lookup_hold.amount == 5000
+    assert lookup_hold.description is None
+    assert lookup_hold.created_at.as_secs() == invoice1_created_at
+    assert lookup_hold.description_hash is None
+    assert lookup_hold.expires_at.as_secs() == invoice1_expires_at
+    assert lookup_hold.fees_paid == 0
+    assert lookup_hold.metadata is None
+    assert lookup_hold.preimage is None
+    assert lookup_hold.payment_hash == payment_hash
+    assert lookup_hold.transaction_type.name == "INCOMING"
+    assert lookup_hold.state.name == "PENDING"  # TODO ACCEPTED STATE
+    assert lookup_hold.settled_at is None
+
+    content = {
+        "method": "settle_hold_invoice",
+        "params": {
+            "preimage": preimage,
+        },
+    }
+    content = json.dumps(content)
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    await client.send_event(event)
+
+    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 4 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 4
+    error_events = []
+    success_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if (
+            "result" in content
+            and content["result"] is not None
+            and content["result_type"] == "settle_hold_invoice"
+        ):
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+    for content in success_events:
+        assert content["result_type"] == "settle_hold_invoice"
+        lookup_hold = await nwc.lookup_invoice(
+            LookupInvoiceRequest(
+                payment_hash=None,
+                invoice=invoice1,
+            )
+        )
+        assert lookup_hold.invoice == invoice1
+        assert lookup_hold.amount == 5000
+        assert lookup_hold.description is None
+        assert lookup_hold.created_at.as_secs() == invoice1_created_at
+        assert lookup_hold.description_hash is None
+        assert lookup_hold.expires_at.as_secs() == invoice1_expires_at
+        assert lookup_hold.fees_paid == 0
+        assert lookup_hold.metadata is None
+        assert lookup_hold.preimage == preimage
+        assert lookup_hold.payment_hash == payment_hash
+        assert lookup_hold.transaction_type.name == "INCOMING"
+        assert lookup_hold.state.name == "SETTLED"
+        assert lookup_hold.settled_at.as_secs() == pytest.approx(
+            int(time.time()), abs=1
+        )
+
+    wait_for(
+        lambda: l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0][
+            "status"
+        ]
+        == "complete"
+    )
+
+    preimage = secrets.token_hex(32)
+    payment_hash = hashlib.sha256(bytes.fromhex(preimage)).hexdigest()
+    content = {
+        "method": "make_hold_invoice",
+        "params": {
+            "amount": 5000,
+            "payment_hash": payment_hash,
+            "description": "cancel_hold",
+            "expiry": 1000,
+            "cltv_expiry_delta": 200,
+        },
+    }
+    content = json.dumps(content)
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    await client.send_event(event)
+
+    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 6 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 6
+    error_events = []
+    success_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if (
+            "result" in content
+            and content["result"] is not None
+            and content["result_type"] == "make_hold_invoice"
+            and content["result"]["payment_hash"] == payment_hash
+        ):
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+    for content in success_events:
+        assert content["result_type"] == "make_hold_invoice"
+        assert content["result"]["payment_hash"] == payment_hash
+        invoice2 = content["result"]["invoice"]
+        invoice2_created_at = pytest.approx(int(time.time()), abs=1)
+        invoice2_expires_at = pytest.approx(int(time.time()) + 1000, abs=1)
+
+    executor.submit(l1.rpc.call, "xpay", [success_events[0]["result"]["invoice"]])
+
+    response_filter = Filter().kind(Kind(23196)).author(uri.public_key())
+    events = await nostr_client.fetch_events(
+        response_filter, timeout=timedelta(seconds=10)
+    )
+    start_time = datetime.now()
+    LOGGER.info(f"Got {events.len()} events")
+    while events.len() < 2 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await nostr_client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+        LOGGER.info(f"Got {events.len()} events")
+    assert events.len() == 2
+    hold_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if (
+            content["notification_type"] == "hold_invoice_accepted"
+            and content["notification"]["payment_hash"] == payment_hash
+        ):
+            hold_events.append(content)
+    assert len(hold_events) == 1
+
+    content = {
+        "method": "cancel_hold_invoice",
+        "params": {
+            "payment_hash": payment_hash,
+        },
+    }
+    content = json.dumps(content)
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    await client.send_event(event)
+
+    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 7 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 7
+    error_events = []
+    success_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if (
+            "result" in content
+            and content["result"] is not None
+            and content["result_type"] == "cancel_hold_invoice"
+        ):
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+    for content in success_events:
+        assert content["result_type"] == "cancel_hold_invoice"
+        lookup_hold = await nwc.lookup_invoice(
+            LookupInvoiceRequest(
+                payment_hash=None,
+                invoice=invoice2,
+            )
+        )
+        assert lookup_hold.invoice == invoice2
+        assert lookup_hold.amount == 5000
+        assert lookup_hold.description == "cancel_hold"
+        assert lookup_hold.created_at.as_secs() == invoice2_created_at
+        assert lookup_hold.description_hash is None
+        assert lookup_hold.expires_at.as_secs() == invoice2_expires_at
+        assert lookup_hold.fees_paid == 0
+        assert lookup_hold.metadata is None
+        assert lookup_hold.preimage is None
+        assert lookup_hold.payment_hash == payment_hash
+        assert lookup_hold.transaction_type.name == "INCOMING"
+        assert lookup_hold.state.name == "EXPIRED"
+        assert lookup_hold.settled_at is None
+
+    invoice2_decoded = l1.rpc.call("decode", [invoice2])
+    assert invoice2_decoded["min_final_cltv_expiry"] == 200
+
+    wait_for(
+        lambda: l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0][
+            "status"
+        ]
+        == "failed"
+    )
+
+    nwc = Nwc(uri)
+
+    invoice_lookup1 = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=payment_hash,
+            invoice=None,
+        )
+    )
+    invoice_lookup2 = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=None,
+            invoice=invoice2,
+        )
+    )
+    invoice_lookup3 = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=payment_hash,
+            invoice=invoice2,
+        )
+    )
+    assert invoice_lookup1 == invoice_lookup2
+    assert invoice_lookup1 == invoice_lookup3
+
+    invoice_lookup4 = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=None,
+            invoice=invoice1,
+        )
+    )
+
+    result = await nwc.list_transactions(
+        ListTransactionsRequest(
+            _from=None,
+            until=None,
+            limit=None,
+            offset=None,
+            unpaid=True,
+            transaction_type=None,
+        )
+    )
+    assert len(result) == 2
+    assert result == [invoice_lookup1, invoice_lookup4] or result == [
+        invoice_lookup4,
+        invoice_lookup1,
+    ]
+
+    description3 = "test3"
+    description_hash3 = hashlib.sha256(description3.encode()).hexdigest()
+    preimage = secrets.token_hex(32)
+    payment_hash = hashlib.sha256(bytes.fromhex(preimage)).hexdigest()
+    content = {
+        "method": "make_hold_invoice",
+        "params": {
+            "amount": 5001,
+            "payment_hash": payment_hash,
+            "description": description3,
+            "description_hash": description_hash3,
+        },
+    }
+    content = json.dumps(content)
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    await client.send_event(event)
+
+    start_time = datetime.now()
+    while (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        try:
+            await nwc.lookup_invoice(
+                LookupInvoiceRequest(
+                    payment_hash=payment_hash,
+                    invoice=None,
+                )
+            )
+            break
+        except Exception:
+            continue
+
+    lookup_hold = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=payment_hash,
+            invoice=None,
+        )
+    )
+    assert lookup_hold.amount == 5001
+    assert lookup_hold.description is None
+    assert lookup_hold.description_hash == description_hash3
+    assert lookup_hold.metadata is None
+    assert lookup_hold.preimage is None
+    assert lookup_hold.payment_hash == payment_hash
+    assert lookup_hold.transaction_type.name == "INCOMING"
+    assert lookup_hold.state.name == "PENDING"
+    assert lookup_hold.settled_at is None
+
+    description4 = "test4"
+    description_hash4 = hashlib.sha256(description4.encode()).hexdigest()
+    preimage = secrets.token_hex(32)
+    payment_hash = hashlib.sha256(bytes.fromhex(preimage)).hexdigest()
+    content = {
+        "method": "make_hold_invoice",
+        "params": {
+            "amount": 5002,
+            "payment_hash": payment_hash,
+            "description_hash": description_hash4,
+        },
+    }
+    content = json.dumps(content)
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    await client.send_event(event)
+
+    start_time = datetime.now()
+    while (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        try:
+            await nwc.lookup_invoice(
+                LookupInvoiceRequest(
+                    payment_hash=payment_hash,
+                    invoice=None,
+                )
+            )
+            break
+        except Exception:
+            continue
+
+    lookup_hold = await nwc.lookup_invoice(
+        LookupInvoiceRequest(
+            payment_hash=payment_hash,
+            invoice=None,
+        )
+    )
+    assert lookup_hold.amount == 5002
+    assert lookup_hold.description is None
+    assert lookup_hold.description_hash == description_hash4
+    assert lookup_hold.metadata is None
+    assert lookup_hold.preimage is None
+    assert lookup_hold.payment_hash == payment_hash
+    assert lookup_hold.transaction_type.name == "INCOMING"
+    assert lookup_hold.state.name == "PENDING"
+    assert lookup_hold.settled_at is None
+
+    response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
+    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
+    start_time = datetime.now()
+    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+    assert events.len() == 1
+    events_vec = events.to_vec()
+    assert (
+        events_vec[0].content()
+        == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_hold_invoice cancel_hold_invoice settle_hold_invoice notifications"
+    )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("encryption")).content()
+        == "nip44_v2 nip04"
+    )
+    assert (
+        events_vec[0].tags().find(TagKind.UNKNOWN("notifications")).content()
+        == "payment_received payment_sent hold_invoice_accepted"
+    )
+
+    l2.restart()
+
+    l1.rpc.connect(l2.info["id"], "localhost", l2.port)
+
+    executor.submit(l1.rpc.call, "xpay", [lookup_hold.invoice])
+
+    response_filter = Filter().kind(Kind(23196)).author(uri.public_key())
+    events = await nostr_client.fetch_events(
+        response_filter, timeout=timedelta(seconds=10)
+    )
+    start_time = datetime.now()
+    LOGGER.info(f"Got {events.len()} events")
+    while events.len() < 3 and (datetime.now() - start_time) < timedelta(seconds=10):
+        time.sleep(1)
+        events = await nostr_client.fetch_events(
+            response_filter, timeout=timedelta(seconds=1)
+        )
+        LOGGER.info(f"Got {events.len()} events")
+    assert events.len() == 3
+    hold_events = []
+    for event in events.to_vec():
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if (
+            content["notification_type"] == "hold_invoice_accepted"
+            and content["notification"]["payment_hash"] == payment_hash
+        ):
+            hold_events.append(content)
+    assert len(hold_events) == 1
 
 
 @pytest_asyncio.fixture(scope="function")

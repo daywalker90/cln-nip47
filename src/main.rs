@@ -1,4 +1,8 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 
 use anyhow::anyhow;
 use cln_plugin::{
@@ -12,9 +16,16 @@ use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
 use parse::read_startup_options;
 use rpc::{nwc_budget, nwc_create, nwc_list, nwc_revoke};
+use serde_json::json;
 use structs::PluginState;
 use tokio::time;
+use tonic::transport::{Certificate, ClientTlsConfig, Endpoint, Identity};
 use util::{load_nwc_store, update_nwc_store};
+
+use crate::{
+    hold::{hold_client::HoldClient, InvoiceState, ListRequest},
+    nwc_notifications::holdinvoice_accepted_handler,
+};
 
 mod nwc;
 mod nwc_balance;
@@ -32,6 +43,9 @@ mod tasks;
 mod util;
 
 pub const STARTUP_DELAY: u64 = 1;
+pub mod hold {
+    tonic::include_proto!("hold");
+}
 
 const OPT_RELAYS: StringArrayConfigOption = ConfigOption::new_str_arr_no_default(
     "nip47-relays",
@@ -56,10 +70,17 @@ pub const WALLET_PAY_METHODS: [nip47::Method; 4] = [
     nip47::Method::PayKeysend,
     nip47::Method::MultiPayKeysend,
 ];
+pub const WALLET_HOLD_METHODS: [nip47::Method; 3] = [
+    nip47::Method::MakeHoldInvoice,
+    nip47::Method::CancelHoldInvoice,
+    nip47::Method::SettleHoldInvoice,
+];
 pub const WALLET_NOTIFICATIONS: [nip47::NotificationType; 2] = [
     nip47::NotificationType::PaymentReceived,
     nip47::NotificationType::PaymentSent,
 ];
+pub const WALLET_HOLD_NOTIFICATIONS: [nip47::NotificationType; 1] =
+    [nip47::NotificationType::HoldInvoiceAccepted];
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -106,6 +127,16 @@ async fn main() -> Result<(), anyhow::Error> {
         None => return Err(anyhow!("Error configuring cln-nip47!")),
     };
     let plugin = confplugin.start(state).await?;
+
+    match check_hold_support(plugin.clone()).await {
+        Ok(()) => {
+            log::info!("Hold support activated, loading pending invoices...");
+            if let Err(e) = load_pending_hold_invoices(plugin.clone()).await {
+                log::error!("Error loading pending hold invoices: {e}");
+            }
+        }
+        Err(e) => log::info!("Hold support not activated: {e}"),
+    }
 
     {
         let mut rpc = plugin.state().rpc_lock.lock().await;
@@ -163,5 +194,96 @@ async fn load_nwcs(plugin: Plugin<PluginState>, rpc: &mut ClnRpc) -> Result<(), 
 
         run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
     }
+    Ok(())
+}
+
+async fn load_pending_hold_invoices(plugin: Plugin<PluginState>) -> Result<(), anyhow::Error> {
+    let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
+    let invoices_request = ListRequest { constraint: None };
+    let invoices = hold_client
+        .list(invoices_request)
+        .await?
+        .into_inner()
+        .invoices;
+
+    for invoice in invoices {
+        if invoice.state() == InvoiceState::Accepted || invoice.state() == InvoiceState::Unpaid {
+            log::debug!(
+                "Starting holdinvoice accepted handler for {}",
+                hex::encode(&invoice.payment_hash)
+            );
+            tokio::spawn(holdinvoice_accepted_handler(
+                plugin.clone(),
+                invoice.payment_hash,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::Error> {
+    let mut rpc = plugin.state().rpc_lock.lock().await;
+    let hold_grpc_host_response: serde_json::Value = rpc
+        .call_raw("listconfigs", &json!({"config": "hold-grpc-host"}))
+        .await?;
+
+    let Some(hold_grpc_host_configs) = hold_grpc_host_response.get("configs") else {
+        return Err(anyhow!("Unsopprted listconfigs response!"));
+    };
+    let Some(hold_grpc_host_config) = hold_grpc_host_configs.get("hold-grpc-host") else {
+        return Err(anyhow!("hold-grpc-host config not found"));
+    };
+    let Some(hold_grpc_host_value) = hold_grpc_host_config.get("value_str") else {
+        return Err(anyhow!("hold-grpc-host config not a string"));
+    };
+    let Some(hold_grpc_host) = hold_grpc_host_value.as_str() else {
+        return Err(anyhow!("hold-grpc-host config not convertable to string"));
+    };
+
+    let hold_grpc_port_response: serde_json::Value = rpc
+        .call_raw("listconfigs", &json!({"config": "hold-grpc-port"}))
+        .await?;
+    let Some(hold_grpc_port_configs) = hold_grpc_port_response.get("configs") else {
+        return Err(anyhow!("Unsopprted listconfigs response!"));
+    };
+    let Some(hold_grpc_port_config) = hold_grpc_port_configs.get("hold-grpc-port") else {
+        return Err(anyhow!("hold-grpc-port config not found"));
+    };
+    let Some(hold_grpc_port_value) = hold_grpc_port_config.get("value_int") else {
+        return Err(anyhow!("hold-grpc-port config not a number"));
+    };
+    let hold_grpc_port = if let Some(hgh) = hold_grpc_port_value.as_u64() {
+        u16::try_from(hgh)?
+    } else {
+        return Err(anyhow!("hold-grpc-port config not convertable to integer"));
+    };
+
+    let cert_dir = PathBuf::from_str(&plugin.configuration().lightning_dir)?.join("hold");
+
+    log::debug!(
+        "Searching {} for hold plugin certs",
+        cert_dir.to_str().unwrap()
+    );
+
+    let ca_cert = tokio::fs::read(cert_dir.join("ca.pem")).await?;
+    let client_cert = tokio::fs::read(cert_dir.join("client.pem")).await?;
+    let client_key = tokio::fs::read(cert_dir.join("client-key.pem")).await?;
+
+    let identity = Identity::from_pem(client_cert, client_key);
+
+    let ca = Certificate::from_pem(ca_cert);
+
+    let tls_config = ClientTlsConfig::new()
+        .ca_certificate(ca)
+        .identity(identity)
+        .domain_name("hold");
+
+    let hold_channel = Endpoint::from_shared(format!("https://{hold_grpc_host}:{hold_grpc_port}"))?
+        .tls_config(tls_config)?
+        .keep_alive_while_idle(true)
+        .connect_lazy();
+    *plugin.state().hold_client.lock() = Some(HoldClient::new(hold_channel));
+
     Ok(())
 }
