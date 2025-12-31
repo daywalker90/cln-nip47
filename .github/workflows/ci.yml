@@ -27,14 +27,14 @@ jobs:
             bitcoind-version: ["30.0"]
             experimental: [1]
             deprecated: [0]
-            python-version: ["3.9", "3.13"]
+            python-version: ["3.9", "3.14"]
             os: ["ubuntu-latest"]
 
     runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Create cache paths
       run: |
@@ -44,7 +44,7 @@ jobs:
         sudo chown -R $USER /usr/local/libexec
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -60,7 +60,7 @@ jobs:
 
     - name: Restore CLN cache
       id: cache-cln
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: |
           /usr/local/bin/lightning*
@@ -69,13 +69,13 @@ jobs:
 
     - name: Restore bitcoind cache
       id: cache-bitcoind
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: /usr/local/bin/bitcoin*
         key: cache-bitcoind-${{ matrix.bitcoind-version }}-${{ steps.exact_versions.outputs.os_version }}
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v7
       with:
         enable-cache: true
         cache-dependency-glob: "**/pyproject.toml"
@@ -93,7 +93,7 @@ jobs:
     - name: Save bitcoind cache
       id: save-cache-bitcoind
       if : ${{ always() && steps.cache-bitcoind.outputs.cache-hit != 'true'}}
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: /usr/local/bin/bitcoin*
         key: ${{ steps.cache-bitcoind.outputs.cache-primary-key }}
@@ -111,7 +111,7 @@ jobs:
     - name: Save CLN cache
       id: save-cache-cln
       if : ${{ always() && steps.cache-cln.outputs.cache-hit != 'true' }}
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: |
           /usr/local/bin/lightning*
@@ -123,7 +123,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Set up protoc
-      if: ${{ inputs.tagged-release == false}} && ${{ steps.cache-cln.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.tagged-release == false}}
       uses: arduino/setup-protoc@v3
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -155,5 +155,6 @@ jobs:
         export PYTEST_TIMEOUT=600
 
         cd tests
+        tar -xf nostr-rs-relay.tar.gz
         uv add --dev pyln-testing==${{ inputs.pyln-version }} pyln-client==${{ inputs.pyln-version }} pyln-proto==${{ inputs.pyln-version }}
         uv run -v pytest -n=10

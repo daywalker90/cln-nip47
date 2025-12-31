@@ -1,0 +1,12 @@
+
+[info]
+relay_url = "ws://127.0.0.1/"
+name = "nostr-rs-relay"
+description = "test relay"
+
+[options]
+reject_future_seconds = 1800
+[limits]
+limit_scrapers = false
+[network]
+address = "0.0.0.0"

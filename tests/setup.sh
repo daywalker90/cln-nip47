@@ -68,6 +68,11 @@ else
     exit 1
 fi
 
+if ! tar -xzvf "$script_dir/nostr-rs-relay.tar.gz" -C "$script_dir"; then
+    echo "Error extracting the contents of nostr-rs-relay.tar.gz" >&2
+    exit 1
+fi
+
 proto_path="$script_dir/../proto"
 if [ -d "$proto_path" ]; then
     # Generate grpc files
