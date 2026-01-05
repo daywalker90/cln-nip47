@@ -14,7 +14,7 @@ jobs:
         runs-on: ${{ matrix.os }}
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Install rust
               id: rust
               uses: dtolnay/rust-toolchain@stable
@@ -83,7 +83,7 @@ jobs:
               id: tag_name
               run: echo "current_version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Get Changelog Entry
               id: changelog_reader
               uses: mindsers/changelog-reader-action@v2
