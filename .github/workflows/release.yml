@@ -102,3 +102,4 @@ jobs:
                 artifactErrorsFailBuild: true
                 body: "${{ steps.changelog_reader.outputs.changes }} \n\n### Release binaries info\n\n- Release binaries were built using rust ${{ needs.build.outputs.rust-version }}\n- Linux release binaries require glibc>=2.31"
                 artifacts: "${{ github.event.repository.name }}-${{github.ref_name}}-*.tar.gz"
+                immutableCreate: true
