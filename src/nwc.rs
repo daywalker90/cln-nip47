@@ -34,6 +34,12 @@ use crate::{
     nwc_invoice::make_invoice_response,
     nwc_keysend::{multi_pay_keysend, pay_keysend_response},
     nwc_lookups::{list_transactions_response, lookup_invoice_response},
+    nwc_offer::{
+        get_offer_info_response,
+        make_offer_response,
+        multi_pay_offer,
+        pay_offer_response,
+    },
     nwc_pay::{multi_pay_invoice, pay_invoice_response},
     structs::{NwcStore, PluginState},
     tasks::budget_task,
@@ -288,6 +294,18 @@ async fn nwc_request_handler(
         }
         nip47::RequestParams::SettleHoldInvoice(settle_hold_invoice_request) => {
             settle_hold_invoice_response(plugin.clone(), settle_hold_invoice_request, &label).await
+        }
+        nip47::RequestParams::MakeOffer(make_offer_request) => {
+            make_offer_response(plugin.clone(), make_offer_request).await
+        }
+        nip47::RequestParams::PayOffer(pay_offer_request) => {
+            pay_offer_response(plugin.clone(), pay_offer_request, &label).await
+        }
+        nip47::RequestParams::MultiPayOffer(multi_pay_offer_request) => {
+            multi_pay_offer(plugin.clone(), multi_pay_offer_request, &label).await
+        }
+        nip47::RequestParams::GetOfferInfo(get_offer_info_request) => {
+            get_offer_info_response(plugin.clone(), get_offer_info_request).await
         }
     };
     for (response, id) in responses {
