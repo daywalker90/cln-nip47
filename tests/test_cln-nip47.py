@@ -399,7 +399,9 @@ async def test_make_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
     l1 = node_factory.get_node(
         options=options,
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
+    uri_res = l1.rpc.call("nip47-create", ["test1", 3000])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
     content = {
@@ -422,20 +424,18 @@ async def test_make_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
     client = Client(signer)
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
-    await client.send_event(event)
+    await fetch_info_event(client, uri)
 
-    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
-    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
-    start_time = datetime.now()
-    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
-        time.sleep(1)
-        events = await client.fetch_events(
-            response_filter, timeout=timedelta(seconds=1)
-        )
-    assert events.len() == 1
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        1,
+    )
     error_events = []
     success_events = []
-    for event in events.to_vec():
+    for event in responses1:
         LOGGER.info(event)
         content = await signer.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
@@ -485,7 +485,10 @@ async def test_get_offer_info(node_factory, get_plugin, nostr_relay):  # noqa: F
             "issuer": "me :)",
         },
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
+    uri_res = l1.rpc.call("nip47-create", ["test1", 3000])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
     content = {
@@ -505,20 +508,18 @@ async def test_get_offer_info(node_factory, get_plugin, nostr_relay):  # noqa: F
     client = Client(signer)
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
-    await client.send_event(event)
+    await fetch_info_event(client, uri)
 
-    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
-    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
-    start_time = datetime.now()
-    while events.len() < 1 and (datetime.now() - start_time) < timedelta(seconds=10):
-        time.sleep(1)
-        events = await client.fetch_events(
-            response_filter, timeout=timedelta(seconds=1)
-        )
-    assert events.len() == 1
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        1,
+    )
     error_events = []
     success_events = []
-    for event in events.to_vec():
+    for event in responses1:
         LOGGER.info(event)
         content = await signer.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
@@ -1253,7 +1254,10 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
         wait_for_announce=True,
         opts=opts,
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3001])["uri"]
+    uri_res = l1.rpc.call("nip47-create", ["test1", 3001])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+
     LOGGER.info(uri_str)
     offer1 = l2.rpc.call(
         "offer",
@@ -1264,8 +1268,8 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
     client = Client(signer)
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
+    await fetch_info_event(client, uri)
 
-    event_count = 1
     content = {
         "method": "pay_offer",
         "params": {
@@ -1275,10 +1279,37 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
         },
     }
     json_content = json.dumps(content)
-    (success_events, error_events, event_count) = await custom_nwc_method(
-        json_content, uri, client, event_count
+    encrypted_content1 = await signer.nip04_encrypt(uri.public_key(), json_content)
+    event1 = (
+        await EventBuilder(Kind(23194), encrypted_content1)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
     )
+
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event1),
+        1,
+    )
+
+    error_events = []
+    success_events = []
+    for event in responses1:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
     assert len(success_events) == 1
+    assert len(error_events) == 0
 
     pay = l1.rpc.call("listpays", {})["pays"][0]
     decoded_pay_inv = l2.rpc.call(
@@ -1299,10 +1330,32 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
         },
     }
     json_content_err = json.dumps(content_err)
-    assert event_count == 2
-    (success_events, error_events, event_count) = await custom_nwc_method(
-        json_content_err, uri, client, event_count
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), json_content_err)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
     )
+    (responses2, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses2:
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 0
+    assert len(error_events) == 1
     assert "amount_msat parameter required" in error_events[0]["error"]["message"]
 
     content2 = {
@@ -1313,20 +1366,98 @@ async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
         },
     }
     json_content2 = json.dumps(content2)
-    (success_events, error_events, event_count) = await custom_nwc_method(
-        json_content2, uri, client, event_count
+    encrypted_content2 = await signer.nip04_encrypt(uri.public_key(), json_content2)
+    event2 = (
+        await EventBuilder(Kind(23194), encrypted_content2)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
     )
+    (responses3, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event2),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses3:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
     pay = l1.rpc.call("listpays", {})["pays"][1]
     assert success_events[0]["result"]["preimage"] == pay["preimage"]
 
-    (success_events, error_events, event_count) = await custom_nwc_method(
-        json_content2, uri, client, event_count
+    event2_again = (
+        await EventBuilder(Kind(23194), encrypted_content2)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
     )
+
+    (responses4, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event2_again),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses4:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 0
+    assert len(error_events) == 1
     assert "Payment exceeds budget" in error_events[0]["error"]["message"]
 
-    (success_events, error_events, event_count) = await custom_nwc_method(
-        json_content, uri, client, event_count
+    event1_again = (
+        await EventBuilder(Kind(23194), encrypted_content1)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
     )
+
+    (responses5, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event1_again),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses5:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 0
+    assert len(error_events) == 1
     assert "Payment exceeds budget" in error_events[0]["error"]["message"]
 
 
@@ -1346,7 +1477,10 @@ async def test_multi_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: 
         wait_for_announce=True,
         opts=opts,
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 30000])["uri"]
+    uri_res = l1.rpc.call("nip47-create", ["test1", 30000])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
     offer1 = l2.rpc.call(
@@ -1385,20 +1519,18 @@ async def test_multi_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: 
     client = Client(signer)
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
-    await client.send_event(event)
+    await fetch_info_event(client, uri)
 
-    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
-    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
-    start_time = datetime.now()
-    while events.len() < 3 and (datetime.now() - start_time) < timedelta(seconds=10):
-        time.sleep(1)
-        events = await client.fetch_events(
-            response_filter, timeout=timedelta(seconds=1)
-        )
-    assert events.len() == 3
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        3,
+    )
     success_pays = []
     error_pays = []
-    for event in events.to_vec():
+    for event in responses1:
         LOGGER.info(event)
         d_tag = event.tags().find(
             TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
@@ -1419,48 +1551,9 @@ async def test_multi_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: 
     assert len(error_pays) == 1
 
 
-async def custom_nwc_method(
-    json_content: str, uri: NostrWalletConnectUri, client: Client, event_count: int
-) -> tuple[list, list, int]:
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), json_content)
-    event = (
-        await EventBuilder(Kind(23194), encrypted_content)
-        .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
-    )
-    await client.send_event(event)
-
-    response_filter = Filter().kind(Kind(23195)).author(uri.public_key())
-    events = await client.fetch_events(response_filter, timeout=timedelta(seconds=10))
-    start_time = datetime.now()
-    while events.len() < event_count and (datetime.now() - start_time) < timedelta(
-        seconds=10
-    ):
-        time.sleep(1)
-        events = await client.fetch_events(
-            response_filter, timeout=timedelta(seconds=1)
-        )
-    assert events.len() == event_count
-    error_events = []
-    success_events = []
-    for event in events.to_vec():
-        LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
-        content = json.loads(content)
-        if "result" in content and content["result"] is not None:
-            success_events.append(content)
-        if "error" in content and content["error"] is not None:
-            error_events.append(content)
-
-    event_count += 1
-    return (success_events, error_events, event_count)
-
-
 @pytest.mark.asyncio
-async def test_multi_pay(node_factory, get_plugin, nostr_client):  # noqa: F811
-    nostr_client, relay_port = nostr_client
-    url = f"127.0.0.1:{relay_port}"
+async def test_multi_pay(node_factory, get_plugin, nostr_relay):  # noqa: F811
+    url = nostr_relay
     opts = [
         {
             "log-level": "debug",
