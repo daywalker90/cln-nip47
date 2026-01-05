@@ -51,14 +51,14 @@ jobs:
                 echo $(xcodebuild -showsdks)
                 ls -alh
             - name: Upload unix artifacts
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               if: contains(matrix.os, 'ubuntu')
               with:
                 name: unix-binaries
                 path: |
                     ${{ github.event.repository.name }}-${{github.ref_name}}-*.tar.gz
             - name: Upload macos artifacts
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               if: contains(matrix.os, 'macos')
               with:
                 name: macos-binaries
