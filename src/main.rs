@@ -266,6 +266,14 @@ async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::E
         cert_dir.to_str().unwrap()
     );
 
+    let max_retries = 10;
+    let mut retries = 0;
+    while retries < max_retries && !do_certificates_exist(&cert_dir) {
+        log::debug!("Hold certificates incomplete. Waiting...");
+        time::sleep(Duration::from_millis(500)).await;
+        retries += 1;
+    }
+
     let ca_cert = tokio::fs::read(cert_dir.join("ca.pem")).await?;
     let client_cert = tokio::fs::read(cert_dir.join("client.pem")).await?;
     let client_key = tokio::fs::read(cert_dir.join("client-key.pem")).await?;
@@ -286,4 +294,13 @@ async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::E
     *plugin.state().hold_client.lock() = Some(HoldClient::new(hold_channel));
 
     Ok(())
+}
+
+fn do_certificates_exist(cert_dir: &Path) -> bool {
+    let required_files = ["client.pem", "client-key.pem", "ca.pem"];
+
+    required_files.iter().all(|file| {
+        let path = cert_dir.join(file);
+        path.exists() && path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+    })
 }
