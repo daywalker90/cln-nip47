@@ -3,11 +3,9 @@ use std::path::Path;
 use anyhow::anyhow;
 use cln_plugin::ConfiguredPlugin;
 use cln_rpc::{model::requests::GetinfoRequest, ClnRpc};
-use serde_json::json;
 
 use crate::{
     structs::{PluginState, TimeUnit},
-    util::at_or_above_version,
     OPT_RELAYS,
 };
 
@@ -35,27 +33,8 @@ pub async fn read_startup_options(
     )
     .await?;
     let version = rpc.call_typed(&GetinfoRequest {}).await?.version;
-    let exp_offers: serde_json::Value = rpc
-        .call_raw("listconfigs", &json!({"config": "experimental-offers"}))
-        .await?;
     let mut config = state.config.lock();
     config.my_cln_version = version;
-    if at_or_above_version(&config.my_cln_version, "24.11")? {
-        config.offer_support = true;
-    } else {
-        let offer_support = exp_offers
-            .as_object()
-            .ok_or_else(|| anyhow!("listconfigs not an object"))?
-            .get("configs")
-            .ok_or_else(|| anyhow!("listconfigs doesn't have `configs` object"))?
-            .get("experimental-offers")
-            .ok_or_else(|| anyhow!("listconfigs doesn't have `experimental-offers` object"))?
-            .get("set")
-            .ok_or_else(|| anyhow!("listconfigs doesn't have `set` object"))?
-            .as_bool()
-            .ok_or_else(|| anyhow!("listconfigs doesn't have `set` as a bool"))?;
-        config.offer_support = offer_support;
-    }
     for relay in relays_str {
         log::debug!("RELAY:{relay}");
         config.relays.push(nostr_sdk::RelayUrl::parse(&relay)?);
