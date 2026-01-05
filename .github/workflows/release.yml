@@ -92,7 +92,7 @@ jobs:
                 version: ${{ steps.tag_name.outputs.current_version }}
                 path: ./CHANGELOG.md
             - name: Download Artifacts
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v7
               with:
                 merge-multiple: true
             - name: Release
