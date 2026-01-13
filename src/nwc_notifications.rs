@@ -167,6 +167,9 @@ fn make_payment_received_from_listinvoices(
             settled_at,
             metadata: None,
             state: Some(state),
+            offer_issuer: invoice_decoded.offer_issuer,
+            payer_note: invoice_decoded.invreq_payer_note,
+            offer_id: invoice_decoded.offer_id,
         }),
     };
 
@@ -234,9 +237,6 @@ async fn make_payment_sent_from_listpays(
         &String::new()
     };
 
-    let description;
-    let description_hash;
-    let amount;
     let created_at = Timestamp::from_secs(pay.created_at);
     let preimage = hex::encode(
         pay.preimage
@@ -245,59 +245,46 @@ async fn make_payment_sent_from_listpays(
     );
     let settled_at = Timestamp::from_secs(pay.completed_at.unwrap());
 
-    if invstring.is_empty() {
-        description = pay.description.clone();
-        description_hash = None;
-        amount = if let Some(amt) = pay.amount_msat {
-            amt.msat()
-        } else {
-            // Amount missing but required
-            0
-        }
-    } else {
-        let invoice_decoded = rpc
-            .call_typed(&DecodeRequest {
-                string: invstring.clone(),
-            })
-            .await?;
+    let invoice_decoded = rpc
+        .call_typed(&DecodeRequest {
+            string: invstring.clone(),
+        })
+        .await?;
 
-        let not_invoice_err = Err(anyhow!(NOT_INV_ERR.to_owned()));
+    let not_invoice_err = Err(anyhow!(NOT_INV_ERR.to_owned()));
 
-        if !invoice_decoded.valid {
-            return not_invoice_err;
-        }
-
-        description = match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                invoice_decoded.offer_description
-            }
-            cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => invoice_decoded.description,
-            _ => return not_invoice_err,
-        };
-        description_hash = match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
-            cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                invoice_decoded.description_hash.map(|h| h.to_string())
-            }
-            _ => return not_invoice_err,
-        };
-        amount = match invoice_decoded.item_type {
-            cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
-                invoice_decoded.invoice_amount_msat.unwrap().msat()
-            }
-            cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
-                if let Some(amt) = invoice_decoded.amount_msat {
-                    amt.msat()
-                } else if let Some(a) = pay.amount_msat {
-                    a.msat()
-                } else {
-                    // amount: `any` but have to put a value...
-                    0
-                }
-            }
-            _ => return not_invoice_err,
-        };
+    if !invoice_decoded.valid {
+        return not_invoice_err;
     }
+
+    let description = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => invoice_decoded.description,
+        _ => return not_invoice_err,
+    };
+    let description_hash = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => None,
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            invoice_decoded.description_hash.map(|h| h.to_string())
+        }
+        _ => return not_invoice_err,
+    };
+    let amount = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+            invoice_decoded.invoice_amount_msat.unwrap().msat()
+        }
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            if let Some(amt) = invoice_decoded.amount_msat {
+                amt.msat()
+            } else if let Some(a) = pay.amount_msat {
+                a.msat()
+            } else {
+                // amount: `any` but have to put a value...
+                0
+            }
+        }
+        _ => return not_invoice_err,
+    };
 
     let fees_paid = if let Some(amt_sent) = pay.amount_sent_msat {
         amt_sent.msat() - amount
@@ -327,6 +314,9 @@ async fn make_payment_sent_from_listpays(
             settled_at,
             metadata: None,
             state: Some(state),
+            offer_issuer: invoice_decoded.offer_issuer,
+            payer_note: invoice_decoded.invreq_payer_note,
+            offer_id: invoice_decoded.offer_id,
         }),
     };
 

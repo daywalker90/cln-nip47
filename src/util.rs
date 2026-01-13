@@ -11,6 +11,8 @@ use crate::{
     OPT_NOTIFICATIONS,
     PLUGIN_NAME,
     WALLET_NOTIFICATIONS,
+    WALLET_OFFER_PAY_METHODS,
+    WALLET_OFFER_READ_METHODS,
     WALLET_PAY_METHODS,
     WALLET_READ_METHODS,
 };
@@ -125,9 +127,25 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
 
 pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (String, String) {
     let mut methods = WALLET_READ_METHODS.map(|m| m.to_string()).join(" ");
+    methods.push(' ');
+    methods.push_str(
+        WALLET_OFFER_READ_METHODS
+            .map(|m| m.to_string())
+            .join(" ")
+            .as_str(),
+    );
+
     if !is_read_only {
         methods.push(' ');
         methods.push_str(WALLET_PAY_METHODS.map(|m| m.to_string()).join(" ").as_str());
+
+        methods.push(' ');
+        methods.push_str(
+            WALLET_OFFER_PAY_METHODS
+                .map(|m| m.to_string())
+                .join(" ")
+                .as_str(),
+        );
     }
 
     let mut notifications = String::new();
@@ -143,10 +161,14 @@ pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (
     (methods, notifications)
 }
 
-pub fn build_methods_vec(is_read_only: bool, _plugin: &Plugin<PluginState>) -> Vec<nip47::Method> {
+pub fn build_methods_vec(is_read_only: bool, plugin: &Plugin<PluginState>) -> Vec<nip47::Method> {
     let mut methods = WALLET_READ_METHODS.to_vec();
+    methods.extend_from_slice(&WALLET_OFFER_READ_METHODS);
+
     if !is_read_only {
         methods.extend_from_slice(&WALLET_PAY_METHODS);
+
+        methods.extend_from_slice(&WALLET_OFFER_PAY_METHODS);
     }
     methods
 }

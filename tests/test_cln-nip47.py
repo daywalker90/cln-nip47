@@ -219,6 +219,8 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
         Method.MULTI_PAY_INVOICE,
         Method.PAY_KEYSEND,
         Method.MULTI_PAY_KEYSEND,
+        "make_offer",
+        "lookup_offer",
     ]
     assert get_info.network == "regtest"
     assert get_info.notifications == ["payment_received", "payment_sent"]
@@ -241,7 +243,7 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
     assert get_info.alias == node_get_info["alias"]
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
-    assert get_info.methods == [
+    assert get_info.methods.__str__ == [
         Method.MAKE_INVOICE,
         Method.LOOKUP_INVOICE,
         Method.LIST_TRANSACTIONS,
@@ -251,6 +253,8 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
         Method.MULTI_PAY_INVOICE,
         Method.PAY_KEYSEND,
         Method.MULTI_PAY_KEYSEND,
+        "make_offer",
+        "lookup_offer",
     ]
     assert get_info.network == "regtest"
     assert get_info.notifications == []
@@ -258,7 +262,7 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
     assert (
         info_event.content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend"
+        == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_offer lookup_offer"
     )
     assert (
         info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
@@ -282,12 +286,14 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
         Method.LIST_TRANSACTIONS,
         Method.GET_BALANCE,
         Method.GET_INFO,
+        "make_offer",
+        "lookup_offer",
     ]
 
     info_event = await fetch_info_event(client, uri)
     assert (
         info_event.content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info"
+        == "make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer"
     )
     assert (
         info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
@@ -380,6 +386,156 @@ async def test_make_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F81
                 expiry=120,
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_make_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
+    url = nostr_relay
+    options = {
+        "log-level": "debug",
+        "plugin": get_plugin,
+        "nip47-relays": url,
+    }
+    l1 = node_factory.get_node(
+        options=options,
+    )
+    uri_res = l1.rpc.call("nip47-create", ["test1", 3000])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+    LOGGER.info(uri_str)
+    uri = NostrWalletConnectUri.parse(uri_str)
+    content = {
+        "method": "make_offer",
+        "params": {
+            "absolute_expiry": 1762986599,
+            "amount": 3000,
+            "description": "test1",
+            "issuer": "me :)",
+        },
+    }
+    content = json.dumps(content)
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    client = Client(signer)
+    await client.add_relay(RelayUrl.parse(url))
+    await client.connect()
+    await fetch_info_event(client, uri)
+
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses1:
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        assert content["result_type"] == "make_offer"
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+
+    node_offer = l1.rpc.call("decode", [success_events[0]["result"]["offer"]])
+    assert node_offer["offer_amount_msat"] == 3000
+    assert node_offer["offer_absolute_expiry"] == 1762986599
+    assert node_offer["offer_description"] == "test1"
+    assert node_offer["offer_issuer"] == "me :)"
+    assert success_events[0]["result"]["amount"] == 3000
+    assert success_events[0]["result"]["description"] == "test1"
+    assert success_events[0]["result"]["expires_at"] == 1762986599
+    assert success_events[0]["result"]["issuer"] == "me :)"
+
+
+@pytest.mark.asyncio
+async def test_get_offer_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
+    url = nostr_relay
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": url,
+        },
+        {"log-level": "debug"},
+    ]
+    l1, l2 = node_factory.get_nodes(
+        2,
+        opts=opts,
+    )
+
+    timestamp = int(time.time())
+    offer = l2.rpc.call(
+        "offer",
+        {
+            "amount": "1000",
+            "description": "test1",
+            "absolute_expiry": timestamp + 4000,
+            "issuer": "me :)",
+        },
+    )
+    uri_res = l1.rpc.call("nip47-create", ["test1", 3000])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+
+    LOGGER.info(uri_str)
+    uri = NostrWalletConnectUri.parse(uri_str)
+    content = {
+        "method": "get_offer_info",
+        "params": {
+            "offer": offer["bolt12"],
+        },
+    }
+    content = json.dumps(content)
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    client = Client(signer)
+    await client.add_relay(RelayUrl.parse(url))
+    await client.connect()
+    await fetch_info_event(client, uri)
+
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses1:
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        assert content["result_type"] == "get_offer_info"
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+
+    assert success_events[0]["result"]["amount"] == 1000
+    assert success_events[0]["result"]["description"] == "test1"
+    assert success_events[0]["result"]["expires_at"] == timestamp + 4000
+    assert success_events[0]["result"]["issuer"] == "me :)"
 
 
 @pytest.mark.asyncio
@@ -1083,19 +1239,333 @@ async def test_pay_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_multi_pay(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
     url = nostr_relay
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": url,
+        },
+        {"log-level": "debug"},
+    ]
     l1, l2 = node_factory.line_graph(
         2,
         wait_for_announce=True,
-        opts=[
-            {
-                "log-level": "debug",
-                "plugin": get_plugin,
-                "nip47-relays": url,
-            },
-            {"log-level": "debug"},
-        ],
+        opts=opts,
+    )
+    uri_res = l1.rpc.call("nip47-create", ["test1", 3001])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+
+    LOGGER.info(uri_str)
+    offer1 = l2.rpc.call(
+        "offer",
+        {"amount": 3000, "description": "test1"},
+    )
+    uri = NostrWalletConnectUri.parse(uri_str)
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    client = Client(signer)
+    await client.add_relay(RelayUrl.parse(url))
+    await client.connect()
+    await fetch_info_event(client, uri)
+
+    content = {
+        "method": "pay_offer",
+        "params": {
+            "offer": offer1["bolt12"],
+            "amount": 3000,
+            "payer_note": "for pizza",
+        },
+    }
+    json_content = json.dumps(content)
+    encrypted_content1 = await signer.nip04_encrypt(uri.public_key(), json_content)
+    event1 = (
+        await EventBuilder(Kind(23194), encrypted_content1)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event1),
+        1,
+    )
+
+    error_events = []
+    success_events = []
+    for event in responses1:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+
+    pay = l1.rpc.call("listpays", {})["pays"][0]
+    decoded_pay_inv = l2.rpc.call(
+        "listinvoices", {"payment_hash": pay["payment_hash"]}
+    )["invoices"][0]
+    assert decoded_pay_inv["invreq_payer_note"] == "for pizza"
+    assert success_events[0]["result"]["preimage"] == pay["preimage"]
+
+    offer2 = l2.rpc.call(
+        "offer",
+        {"amount": "any", "description": "test2"},
+    )
+
+    content_err = {
+        "method": "pay_offer",
+        "params": {
+            "offer": offer2["bolt12"],
+        },
+    }
+    json_content_err = json.dumps(content_err)
+    encrypted_content = await signer.nip04_encrypt(uri.public_key(), json_content_err)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    (responses2, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses2:
+        LOGGER.info(event)
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 0
+    assert len(error_events) == 1
+    assert "amount_msat parameter required" in error_events[0]["error"]["message"]
+
+    content2 = {
+        "method": "pay_offer",
+        "params": {
+            "offer": offer2["bolt12"],
+            "amount": 1,
+        },
+    }
+    json_content2 = json.dumps(content2)
+    encrypted_content2 = await signer.nip04_encrypt(uri.public_key(), json_content2)
+    event2 = (
+        await EventBuilder(Kind(23194), encrypted_content2)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    (responses3, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event2),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses3:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+    pay = l1.rpc.call("listpays", {})["pays"][1]
+    assert success_events[0]["result"]["preimage"] == pay["preimage"]
+
+    event2_again = (
+        await EventBuilder(Kind(23194), encrypted_content2)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+
+    (responses4, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event2_again),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses4:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 0
+    assert len(error_events) == 1
+    assert "Payment exceeds budget" in error_events[0]["error"]["message"]
+
+    event1_again = (
+        await EventBuilder(Kind(23194), encrypted_content1)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+
+    (responses5, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event1_again),
+        1,
+    )
+    error_events = []
+    success_events = []
+    for event in responses5:
+        LOGGER.info(event)
+        assert event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 0
+    assert len(error_events) == 1
+    assert "Payment exceeds budget" in error_events[0]["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_multi_pay_offer(node_factory, get_plugin, nostr_relay):  # noqa: F811
+    url = nostr_relay
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": url,
+        },
+        {"log-level": "debug"},
+    ]
+    l1, l2 = node_factory.line_graph(
+        2,
+        wait_for_announce=True,
+        opts=opts,
+    )
+    uri_res = l1.rpc.call("nip47-create", ["test1", 30000])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+
+    LOGGER.info(uri_str)
+    uri = NostrWalletConnectUri.parse(uri_str)
+    offer1 = l2.rpc.call(
+        "offer",
+        {"description": "test1", "amount": 3000},
+    )
+    offer2 = l2.rpc.call(
+        "offer",
+        {"description": "test2", "amount": 4000},
+    )
+    offer3 = l2.rpc.call(
+        "offer",
+        {
+            "description": "test3",
+            "amount": 23001,
+        },
+    )
+    content = {
+        "method": "multi_pay_offer",
+        "params": {
+            "offers": [
+                {"id": "4da52c32a1", "offer": offer1["bolt12"]},
+                {"id": "3da52c32a1", "offer": offer2["bolt12"]},
+                {"id": "af3g2k2o11", "offer": offer3["bolt12"]},
+            ],
+        },
+    }
+    content = json.dumps(content)
+    signer = NostrSigner.keys(Keys(uri.secret()))
+    encrypted_content = await signer.nip44_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .sign(signer)
+    )
+    client = Client(signer)
+    await client.add_relay(RelayUrl.parse(url))
+    await client.connect()
+    await fetch_info_event(client, uri)
+
+    (responses1, _res) = await fetch_event_responses(
+        client,
+        client_pubkey,
+        23195,
+        client.send_event(event),
+        3,
+    )
+    success_pays = []
+    error_pays = []
+    for event in responses1:
+        LOGGER.info(event)
+        d_tag = event.tags().find(
+            TagKind.SINGLE_LETTER(SingleLetterTag.lowercase(Alphabet.D))
+        )
+        content = await signer.nip44_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        assert content["result_type"] == "multi_pay_offer"
+        if "result" in content and content["result"] is not None:
+            assert d_tag is not None
+            assert content["result"]["preimage"] is not None
+            success_pays.append(content)
+        if "error" in content and content["error"] is not None:
+            assert d_tag.content() == "af3g2k2o11"
+            assert content["error"]["code"] == "QUOTA_EXCEEDED"
+            assert content["error"]["message"] == "Payment exceeds budget!"
+            error_pays.append(content)
+    assert len(success_pays) == 2
+    assert len(error_pays) == 1
+
+
+@pytest.mark.asyncio
+async def test_multi_pay(node_factory, get_plugin, nostr_relay):  # noqa: F811
+    url = nostr_relay
+    opts = [
+        {
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "nip47-relays": url,
+        },
+        {"log-level": "debug"},
+    ]
+    l1, l2 = node_factory.line_graph(
+        2,
+        wait_for_announce=True,
+        opts=opts,
     )
     uri_res = l1.rpc.call("nip47-create", ["test1", 30000])
     uri_str = uri_res["uri"]
@@ -1386,13 +1856,15 @@ async def test_budget_command(node_factory, get_plugin, nostr_relay):  # noqa: F
         Method.MULTI_PAY_INVOICE,
         Method.PAY_KEYSEND,
         Method.MULTI_PAY_KEYSEND,
+        "make_offer",
+        "lookup_offer",
     ]
 
     info_event = await fetch_info_event(client, uri)
 
     assert (
         info_event.content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend notifications"
+        == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice multi_pay_invoice pay_keysend multi_pay_keysend make_offer lookup_offer notifications"
     )
     assert (
         info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
@@ -1419,12 +1891,14 @@ async def test_budget_command(node_factory, get_plugin, nostr_relay):  # noqa: F
         Method.LIST_TRANSACTIONS,
         Method.GET_BALANCE,
         Method.GET_INFO,
+        "make_offer",
+        "lookup_offer",
     ]
 
     info_event = await fetch_info_event(client, uri)
     assert (
         info_event.content()
-        == "make_invoice lookup_invoice list_transactions get_balance get_info notifications"
+        == "make_invoice lookup_invoice list_transactions get_balance get_info make_offer lookup_offer notifications"
     )
     assert (
         info_event.tags().find(TagKind.UNKNOWN("encryption")).content()

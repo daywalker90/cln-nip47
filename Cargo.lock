@@ -799,9 +799,8 @@ checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
 
 [[package]]
 name = "nostr"
-version = "0.44.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3595fecf0e0aaacb69a0dc0101a4453f3c76eda333d6bbc49f68f64390b3d85"
+version = "0.44.0"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "aes",
  "base64",
@@ -825,8 +824,7 @@ dependencies = [
 [[package]]
 name = "nostr-database"
 version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7462c9d8ae5ef6a28d66a192d399ad2530f1f2130b13186296dbb11bdef5b3d1"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "lru",
  "nostr",
@@ -836,8 +834,7 @@ dependencies = [
 [[package]]
 name = "nostr-gossip"
 version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ade30de16869618919c6b5efc8258f47b654a98b51541eb77f85e8ec5e3c83a6"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "nostr",
 ]
@@ -845,8 +842,7 @@ dependencies = [
 [[package]]
 name = "nostr-relay-pool"
 version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b1073ccfbaea5549fb914a9d52c68dab2aecda61535e5143dd73e95445a804b"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "async-utility",
  "async-wsocket",
@@ -862,9 +858,8 @@ dependencies = [
 
 [[package]]
 name = "nostr-sdk"
-version = "0.44.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "471732576710e779b64f04c55e3f8b5292f865fea228436daf19694f0bf70393"
+version = "0.44.0"
+source = "git+https://github.com/daywalker90/nostr.git?branch=bolt12#f5acfd7b4651608a03712365dfb150855cef663c"
 dependencies = [
  "async-utility",
  "nostr",

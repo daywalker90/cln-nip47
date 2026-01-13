@@ -337,6 +337,9 @@ async fn make_lookup_response_from_listinvoices(
         settled_at: list_invoice.paid_at.map(Timestamp::from_secs),
         metadata: None,
         state: Some(state),
+        offer_issuer: invoice_decoded.offer_issuer,
+        payer_note: invoice_decoded.invreq_payer_note,
+        offer_id: invoice_decoded.offer_id,
     })
 }
 
@@ -443,6 +446,9 @@ async fn make_lookup_response_from_listpays(
         settled_at: list_pay.completed_at.map(Timestamp::from_secs),
         metadata: None,
         state: Some(state),
+        offer_issuer: None,
+        payer_note: None,
+        offer_id: None,
     })
 }
 
