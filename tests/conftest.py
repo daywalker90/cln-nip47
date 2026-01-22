@@ -42,7 +42,6 @@ def nostr_relay(worker_id, node_factory):
         yield ws_url
 
     finally:
-        time.sleep(1.0)
         proc.terminate()
         try:
             proc.wait(timeout=5)
