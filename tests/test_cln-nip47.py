@@ -130,7 +130,7 @@ async def fetch_info_event(
 
 
 @pytest.mark.asyncio
-async def test_get_balance(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_get_balance(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2 = node_factory.line_graph(
         2,
@@ -140,6 +140,7 @@ async def test_get_balance(node_factory, get_plugin, nostr_relay):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
         ],
@@ -186,7 +187,7 @@ async def test_get_balance(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1 = node_factory.get_node(
         options={
@@ -194,6 +195,7 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
             "plugin": get_plugin,
             "nip47-relays": url,
         },
+        broken_log=r"Relay receiver exited with error",
     )
     node_get_info = l1.rpc.call("getinfo", {})
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
@@ -297,7 +299,7 @@ async def test_get_info(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_make_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1 = node_factory.get_node(
         options={
@@ -305,6 +307,7 @@ async def test_make_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F81
             "plugin": get_plugin,
             "nip47-relays": url,
         },
+        broken_log=r"Relay receiver exited with error",
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
@@ -383,7 +386,7 @@ async def test_make_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F81
 
 
 @pytest.mark.asyncio
-async def test_pay_keysend(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2, l3 = node_factory.line_graph(
         3,
@@ -393,6 +396,7 @@ async def test_pay_keysend(node_factory, get_plugin, nostr_relay):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
             {"log-level": "debug"},
@@ -442,7 +446,7 @@ async def test_pay_keysend(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_multi_keysend(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_multi_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2, l3 = node_factory.line_graph(
         3,
@@ -452,6 +456,7 @@ async def test_multi_keysend(node_factory, get_plugin, nostr_relay):  # noqa: F8
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
             {"log-level": "debug"},
@@ -534,7 +539,7 @@ async def test_multi_keysend(node_factory, get_plugin, nostr_relay):  # noqa: F8
 
 
 @pytest.mark.asyncio
-async def test_lookup_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2, l3 = node_factory.line_graph(
         3,
@@ -544,6 +549,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
             {"log-level": "debug"},
@@ -763,7 +769,7 @@ async def test_lookup_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F
 
 
 @pytest.mark.asyncio
-async def test_list_transactions(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2 = node_factory.line_graph(
         2,
@@ -773,6 +779,7 @@ async def test_list_transactions(node_factory, get_plugin, nostr_relay):  # noqa
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
         ],
@@ -861,7 +868,7 @@ async def test_list_transactions(node_factory, get_plugin, nostr_relay):  # noqa
 
 
 @pytest.mark.asyncio
-async def test_notifications(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2, l3 = node_factory.line_graph(
         3,
@@ -871,6 +878,7 @@ async def test_notifications(node_factory, get_plugin, nostr_relay):  # noqa: F8
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
             {"log-level": "debug", "plugin": get_plugin, "nip47-relays": url},
@@ -1031,7 +1039,7 @@ async def test_notifications(node_factory, get_plugin, nostr_relay):  # noqa: F8
 
 
 @pytest.mark.asyncio
-async def test_pay_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2 = node_factory.line_graph(
         2,
@@ -1041,6 +1049,7 @@ async def test_pay_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
         ],
@@ -1083,7 +1092,7 @@ async def test_pay_invoice(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_multi_pay(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_multi_pay(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2 = node_factory.line_graph(
         2,
@@ -1093,6 +1102,7 @@ async def test_multi_pay(node_factory, get_plugin, nostr_relay):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
         ],
@@ -1167,7 +1177,7 @@ async def test_multi_pay(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_persistency(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2 = node_factory.line_graph(
         2,
@@ -1177,6 +1187,7 @@ async def test_persistency(node_factory, get_plugin, nostr_relay):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
         ],
@@ -1314,7 +1325,7 @@ async def test_persistency(node_factory, get_plugin, nostr_relay):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_budget_command(node_factory, get_plugin, nostr_relay):  # noqa: F811
+async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1, l2 = node_factory.line_graph(
         2,
@@ -1324,6 +1335,7 @@ async def test_budget_command(node_factory, get_plugin, nostr_relay):  # noqa: F
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
+                "broken_log": r"Relay receiver exited with error",
             },
             {"log-level": "debug"},
         ],
