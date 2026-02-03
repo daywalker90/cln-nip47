@@ -15,7 +15,7 @@ use cln_rpc::{
     primitives::Sha256,
     ClnRpc,
 };
-use nostr_sdk::{nips::nip47, Timestamp};
+use nostr::{nips::nip47, Timestamp};
 
 use crate::{
     hold::{self, list_request::Constraint, ListRequest},
