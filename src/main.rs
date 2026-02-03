@@ -11,7 +11,7 @@ use cln_plugin::{
     options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
 };
 use cln_rpc::{ClnRpc, model::requests::ListdatastoreRequest};
-use nostr_sdk::nips::nip47;
+use nostr::nips::nip47;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
 use parse::read_startup_options;
@@ -23,7 +23,7 @@ use tonic::transport::{Certificate, ClientTlsConfig, Endpoint, Identity};
 use util::{load_nwc_store, update_nwc_store};
 
 use crate::{
-    hold::{hold_client::HoldClient, InvoiceState, ListRequest},
+    hold::{InvoiceState, ListRequest, hold_client::HoldClient},
     nwc_notifications::holdinvoice_accepted_handler,
 };
 

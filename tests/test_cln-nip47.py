@@ -1484,6 +1484,7 @@ async def test_hold_invoice(
                 "important-plugin": get_hold,
                 "nip47-relays": url,
                 "may_reconnect": True,
+                "broken_log": r"Relay receiver exited with error",
             },
         ],
     )
@@ -1672,10 +1673,10 @@ async def test_hold_invoice(
         )
 
     wait_for(
-        lambda: l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0][
-            "status"
-        ]
-        == "complete"
+        lambda: (
+            l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0]["status"]
+            == "complete"
+        )
     )
 
     preimage = secrets.token_hex(32)
@@ -1687,7 +1688,7 @@ async def test_hold_invoice(
             "payment_hash": payment_hash,
             "description": "cancel_hold",
             "expiry": 1000,
-            "cltv_expiry_delta": 200,
+            "min_cltv_expiry_delta": 200,
         },
     }
     content = json.dumps(content)
@@ -1815,10 +1816,10 @@ async def test_hold_invoice(
     assert invoice2_decoded["min_final_cltv_expiry"] == 200
 
     wait_for(
-        lambda: l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0][
-            "status"
-        ]
-        == "failed"
+        lambda: (
+            l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0]["status"]
+            == "failed"
+        )
     )
 
     nwc = Nwc(uri)

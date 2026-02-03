@@ -3,6 +3,7 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::{
         requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest, ListpeerchannelsRequest},
         responses::{
@@ -14,19 +15,14 @@ use cln_rpc::{
         },
     },
     primitives::Sha256,
-    ClnRpc,
 };
-use nostr_sdk::{
-    nips::nip47,
-    nostr::{key::PublicKey, EventBuilder, Kind, Tag},
-    Client,
-    Timestamp,
-};
+use nostr::{EventBuilder, Kind, Tag, Timestamp, key::PublicKey, nips::nip47};
+use nostr_sdk::client::Client;
 
 use crate::{
-    hold::{list_request::Constraint, InvoiceState, ListRequest, TrackRequest},
-    structs::{PluginState, NOT_INV_ERR},
     OPT_NOTIFICATIONS,
+    hold::{InvoiceState, ListRequest, TrackRequest, list_request::Constraint},
+    structs::{NOT_INV_ERR, PluginState},
 };
 
 pub async fn payment_received_handler(
@@ -341,7 +337,7 @@ async fn send_notification(
     client: &Client,
     client_pubkey: &PublicKey,
 ) -> Result<(), anyhow::Error> {
-    let signer = client.signer().await?;
+    let signer = client.signer().unwrap().clone();
     log::debug!("NOTIFICATION: {notification}");
     let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, notification).await?;
     let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
@@ -460,6 +456,7 @@ pub async fn holdinvoice_accepted_handler(
         .call_typed(&ListpeerchannelsRequest {
             id: None,
             short_channel_id: None,
+            channel_id: None,
         })
         .await?
         .channels;
@@ -497,6 +494,7 @@ pub async fn holdinvoice_accepted_handler(
                 expires_at,
                 settle_deadline: lowest_htlc_expiry,
                 metadata: None,
+                state: Some(nip47::TransactionState::Accepted),
             },
         ),
     };

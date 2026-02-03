@@ -6,7 +6,7 @@ use cln_rpc::model::requests::{
     DeldatastoreRequest,
     ListdatastoreRequest,
 };
-use nostr_sdk::{Keys, SecretKey, Timestamp, nips::nip47::NostrWalletConnectURI};
+use nostr::{Keys, SecretKey, Timestamp, nips::nip47::NostrWalletConnectUri};
 use serde_json::json;
 
 use crate::{
@@ -29,7 +29,7 @@ pub async fn nwc_create(
 
     let wallet_keys = Keys::generate();
     let client_keys = Keys::generate();
-    let uri = NostrWalletConnectURI::new(
+    let uri = NostrWalletConnectUri::new(
         wallet_keys.public_key(),
         config.relays.clone(),
         client_keys.secret_key().clone(),

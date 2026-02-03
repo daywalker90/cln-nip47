@@ -3,7 +3,7 @@ use std::{path::Path, time::Duration};
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::ClnRpc;
-use nostr_sdk::Timestamp;
+use nostr::types::Timestamp;
 use tokio::{sync::oneshot, time};
 
 use crate::{

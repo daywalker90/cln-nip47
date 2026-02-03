@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::anyhow;
 use cln_plugin::ConfiguredPlugin;
 use cln_rpc::{model::requests::GetinfoRequest, ClnRpc};
+use nostr::types::RelayUrl;
 
 use crate::{
     structs::{PluginState, TimeUnit},
@@ -37,7 +38,7 @@ pub async fn read_startup_options(
     config.my_cln_version = version;
     for relay in relays_str {
         log::debug!("RELAY:{relay}");
-        config.relays.push(nostr_sdk::RelayUrl::parse(&relay)?);
+        config.relays.push(RelayUrl::parse(&relay)?);
     }
     Ok(())
 }
