@@ -11,7 +11,7 @@ use cln_plugin::{
     Plugin,
 };
 use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc};
-use nostr_sdk::nips::nip47;
+use nostr::nips::nip47;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
 use parse::read_startup_options;

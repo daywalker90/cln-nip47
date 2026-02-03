@@ -574,10 +574,12 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
         },
     )
     wait_for(
-        lambda: l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 3001
+        lambda: (
+            l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 3001
+        )
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
@@ -803,10 +805,12 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
         },
     )
     wait_for(
-        lambda: l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 30001
+        lambda: (
+            l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 30001
+        )
     )
     uri_str = l1.rpc.call("nip47-create", ["test1"])["uri"]
     LOGGER.info(uri_str)
@@ -926,16 +930,20 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
     pay1_list = l1.rpc.call("listpays", {"bolt11": invoice["bolt11"]})["pays"][0]
 
     wait_for(
-        lambda: l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 3000
+        lambda: (
+            l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 3000
+        )
     )
     wait_for(
-        lambda: l3.rpc.call("listpeerchannels", [l2.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 3000
+        lambda: (
+            l3.rpc.call("listpeerchannels", [l2.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 3000
+        )
     )
 
     result = await nwc.make_invoice(
@@ -1476,6 +1484,7 @@ async def test_hold_invoice(
                 "important-plugin": get_hold,
                 "nip47-relays": url,
                 "may_reconnect": True,
+                "broken_log": r"Relay receiver exited with error",
             },
         ],
     )
@@ -1664,10 +1673,10 @@ async def test_hold_invoice(
         )
 
     wait_for(
-        lambda: l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0][
-            "status"
-        ]
-        == "complete"
+        lambda: (
+            l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0]["status"]
+            == "complete"
+        )
     )
 
     preimage = secrets.token_hex(32)
@@ -1679,7 +1688,7 @@ async def test_hold_invoice(
             "payment_hash": payment_hash,
             "description": "cancel_hold",
             "expiry": 1000,
-            "cltv_expiry_delta": 200,
+            "min_cltv_expiry_delta": 200,
         },
     }
     content = json.dumps(content)
@@ -1807,10 +1816,10 @@ async def test_hold_invoice(
     assert invoice2_decoded["min_final_cltv_expiry"] == 200
 
     wait_for(
-        lambda: l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0][
-            "status"
-        ]
-        == "failed"
+        lambda: (
+            l1.rpc.call("listpays", {"payment_hash": payment_hash})["pays"][0]["status"]
+            == "failed"
+        )
     )
 
     nwc = Nwc(uri)

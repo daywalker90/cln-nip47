@@ -1,7 +1,8 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
 use cln_rpc::ClnRpc;
-use nostr_sdk::{client, nips::nip47, nostr};
+use nostr::{nips::nip47::NostrWalletConnectUri, types::RelayUrl};
+use nostr_sdk::client;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
@@ -33,7 +34,7 @@ impl PluginState {
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub relays: Vec<nostr_sdk::RelayUrl>,
+    pub relays: Vec<RelayUrl>,
     pub my_cln_version: String,
 }
 impl Config {
@@ -77,7 +78,7 @@ pub struct BudgetIntervalConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NwcStore {
-    pub uri: nip47::NostrWalletConnectURI,
+    pub uri: NostrWalletConnectUri,
     pub walletkey: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget_msat: Option<u64>,

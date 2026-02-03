@@ -5,7 +5,7 @@ use cln_rpc::{
     model::requests::InvoiceRequest,
     primitives::{Amount, AmountOrAny, Sha256},
 };
-use nostr_sdk::nips::nip47;
+use nostr::{nips::nip47, types::Timestamp};
 use uuid::Uuid;
 
 use crate::structs::PluginState;
@@ -94,8 +94,8 @@ async fn make_invoice(
             description_hash: params.description_hash,
             preimage: None,
             amount: Some(params.amount),
-            created_at: Some(nostr_sdk::nostr::Timestamp::now()),
-            expires_at: Some(nostr_sdk::nostr::Timestamp::from_secs(o.expires_at)),
+            created_at: Some(Timestamp::now()),
+            expires_at: Some(Timestamp::from_secs(o.expires_at)),
         }),
         Err(e) => Err(nip47::NIP47Error {
             code: nip47::ErrorCode::Internal,

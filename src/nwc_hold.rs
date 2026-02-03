@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use cln_plugin::Plugin;
 use cln_rpc::primitives::Sha256;
-use nostr_sdk::{nips::nip47, Timestamp};
+use nostr::{nips::nip47, Timestamp};
 
 use crate::{
     hold::{invoice_request::Description, CancelRequest, InvoiceRequest, SettleRequest},
@@ -93,7 +93,7 @@ async fn make_hold_invoice(
         payment_hash: payment_hash.clone(),
         amount_msat: params.amount,
         expiry: Some(expiry),
-        min_final_cltv_expiry: params.cltv_expiry_delta.map(u64::from),
+        min_final_cltv_expiry: params.min_cltv_expiry_delta.map(u64::from),
         routing_hints: Vec::new(),
         description,
     };

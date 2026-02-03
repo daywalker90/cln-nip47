@@ -16,12 +16,8 @@ use cln_rpc::{
     primitives::Sha256,
     ClnRpc,
 };
-use nostr_sdk::{
-    nips::nip47,
-    nostr::{key::PublicKey, EventBuilder, Kind, Tag},
-    Client,
-    Timestamp,
-};
+use nostr::{key::PublicKey, nips::nip47, EventBuilder, Kind, Tag, Timestamp};
+use nostr_sdk::client::Client;
 
 use crate::{
     hold::{list_request::Constraint, InvoiceState, ListRequest, TrackRequest},
@@ -341,7 +337,7 @@ async fn send_notification(
     client: &Client,
     client_pubkey: &PublicKey,
 ) -> Result<(), anyhow::Error> {
-    let signer = client.signer().await?;
+    let signer = client.signer().unwrap().clone();
     log::debug!("NOTIFICATION: {notification}");
     let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, notification).await?;
     let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
@@ -497,6 +493,7 @@ pub async fn holdinvoice_accepted_handler(
                 expires_at,
                 settle_deadline: lowest_htlc_expiry,
                 metadata: None,
+                state: Some(nip47::TransactionState::Accepted),
             },
         ),
     };

@@ -4,7 +4,7 @@ use cln_rpc::{
     model::requests::{DatastoreMode, DatastoreRequest, ListdatastoreRequest},
     ClnRpc,
 };
-use nostr_sdk::nips::nip47;
+use nostr::nips::nip47;
 
 use crate::{
     structs::{NwcStore, PluginState},
