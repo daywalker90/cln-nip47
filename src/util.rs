@@ -4,12 +4,14 @@ use cln_rpc::{
     model::requests::{DatastoreMode, DatastoreRequest, ListdatastoreRequest},
     ClnRpc,
 };
-use nostr_sdk::nips::nip47;
+use nostr::nips::nip47;
 
 use crate::{
     structs::{NwcStore, PluginState},
     OPT_NOTIFICATIONS,
     PLUGIN_NAME,
+    WALLET_HOLD_METHODS,
+    WALLET_HOLD_NOTIFICATIONS,
     WALLET_NOTIFICATIONS,
     WALLET_PAY_METHODS,
     WALLET_READ_METHODS,
@@ -124,10 +126,21 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
 }
 
 pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (String, String) {
+    let holdinvoice_support = plugin.state().hold_client.lock().is_some();
+
     let mut methods = WALLET_READ_METHODS.map(|m| m.to_string()).join(" ");
     if !is_read_only {
         methods.push(' ');
         methods.push_str(WALLET_PAY_METHODS.map(|m| m.to_string()).join(" ").as_str());
+    }
+    if holdinvoice_support {
+        methods.push(' ');
+        methods.push_str(
+            WALLET_HOLD_METHODS
+                .map(|m| m.to_string())
+                .join(" ")
+                .as_str(),
+        );
     }
 
     let mut notifications = String::new();
@@ -138,23 +151,41 @@ pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (
                 .join(" ")
                 .as_str(),
         );
+        if holdinvoice_support {
+            notifications.push(' ');
+            notifications.push_str(
+                WALLET_HOLD_NOTIFICATIONS
+                    .map(|m| m.to_string())
+                    .join(" ")
+                    .as_str(),
+            );
+        }
     }
 
     (methods, notifications)
 }
 
-pub fn build_methods_vec(is_read_only: bool, _plugin: &Plugin<PluginState>) -> Vec<nip47::Method> {
+pub fn build_methods_vec(is_read_only: bool, plugin: &Plugin<PluginState>) -> Vec<nip47::Method> {
+    let holdinvoice_support = plugin.state().hold_client.lock().is_some();
     let mut methods = WALLET_READ_METHODS.to_vec();
     if !is_read_only {
         methods.extend_from_slice(&WALLET_PAY_METHODS);
+    }
+    if holdinvoice_support {
+        methods.extend_from_slice(&WALLET_HOLD_METHODS);
     }
     methods
 }
 
 pub fn build_notifications_vec(plugin: &Plugin<PluginState>) -> Vec<String> {
+    let holdinvoice_support = plugin.state().hold_client.lock().is_some();
+
     let mut notifications = Vec::new();
     if plugin.option(&OPT_NOTIFICATIONS).unwrap() {
         notifications.extend_from_slice(&WALLET_NOTIFICATIONS.map(|m| m.to_string()));
+        if holdinvoice_support {
+            notifications.extend_from_slice(&WALLET_HOLD_NOTIFICATIONS.map(|m| m.to_string()));
+        }
     }
     notifications
 }

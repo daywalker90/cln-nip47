@@ -2,24 +2,27 @@ use std::{borrow::Cow, time::Duration};
 
 use anyhow::anyhow;
 use cln_plugin::Plugin;
-use nostr_sdk::{
-    client,
+use futures::StreamExt;
+use nostr::{
     nips::{nip04, nip44, nip47},
-    nostr::{Filter, Kind, Tag},
     Alphabet,
-    Client,
     Event,
     EventBuilder,
     EventId,
+    Filter,
     Keys,
+    Kind,
     PublicKey,
-    RelayPoolNotification,
-    RelayStatus,
     SecretKey,
     SignerError,
     SingleLetterTag,
+    Tag,
     TagKind,
     Timestamp,
+};
+use nostr_sdk::{
+    client::{self, Client, ClientNotification, Error},
+    relay::RelayStatus,
 };
 use tokio::{sync::oneshot, time};
 
@@ -46,38 +49,38 @@ pub async fn run_nwc(
     plugin: Plugin<PluginState>,
     label: String,
     nwc_store: NwcStore,
-) -> Result<(), client::Error> {
+) -> Result<(), Error> {
     let (method_capabilities, _) = build_capabilities(is_read_only_nwc(&nwc_store), &plugin);
 
     let wallet_keys = Keys::new(
         SecretKey::from_hex(&nwc_store.walletkey)
-            .map_err(|e| client::Error::Signer(SignerError::backend(e)))?,
+            .map_err(|e| Error::Signer(SignerError::backend(e)))?,
     );
     let client_pubkey = Keys::new(nwc_store.uri.secret.clone()).public_key();
 
-    let client = Client::new(wallet_keys.clone());
+    let nostr_client = Client::builder().signer(wallet_keys.clone()).build();
 
     log::debug!("relay_count:{}", nwc_store.uri.relays.len());
 
     for relay in &nwc_store.uri.relays {
         log::debug!("Adding relay: {relay}");
-        client.add_relay(relay).await?;
+        nostr_client.add_relay(relay).await?;
     }
 
     if nwc_store.interval_config.is_some() {
         start_nwc_budget_job(&plugin, label.clone());
     }
 
-    let client_clone = client.clone();
+    let nostr_client_clone = nostr_client.clone();
     let plugin_clone = plugin.clone();
     let label_clone = label.clone();
     tokio::spawn(async move {
         loop {
-            client_clone.connect().await;
-            client_clone
-                .wait_for_connection(Duration::from_secs(30))
+            nostr_client_clone
+                .connect()
+                .and_wait(Duration::from_secs(30))
                 .await;
-            let relays = client_clone.relays().await;
+            let relays = nostr_client_clone.relays().await;
             if relays.is_empty() {
                 log::info!("No more relays left, we probably shut down. Exiting...");
                 break;
@@ -98,14 +101,14 @@ pub async fn run_nwc(
 
             if let Err(e) = send_nwc_info_event(
                 plugin_clone.clone(),
-                client_clone.clone(),
+                nostr_client_clone.clone(),
                 method_capabilities.clone(),
                 wallet_keys.clone(),
             )
             .await
             {
                 log::warn!("{e}");
-                client_clone.disconnect().await;
+                nostr_client_clone.disconnect().await;
                 time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
@@ -115,44 +118,48 @@ pub async fn run_nwc(
                 .author(client_pubkey)
                 .since(Timestamp::now() - STARTUP_DELAY - 1);
 
-            if let Err(e) = client_clone.subscribe(filter, None).await {
-                log::warn!("Could not subscribe to nwc events! {e}");
-                client_clone.disconnect().await;
-                time::sleep(Duration::from_secs(5)).await;
-                continue;
+            let mut notifications = nostr_client_clone.notifications();
+
+            match nostr_client_clone.subscribe(filter).await {
+                Ok(o) => {
+                    if o.success.is_empty() {
+                        log::warn!("Could not subscribe to any relay!");
+                        nostr_client_clone.disconnect().await;
+                        time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Error subscribing to relays: {e}");
+                    nostr_client_clone.disconnect().await;
+                    time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
             }
 
-            let client_clone_handler = client_clone.clone();
-            match client_clone
-                .handle_notifications(|notification| {
-                    let client_clone_handler = client_clone_handler.clone();
-                    let plugin_clone = plugin_clone.clone();
-                    let label_clone = label_clone.clone();
-                    let wallet_keys_clone = wallet_keys.clone();
-                    nwc_request_handler(
-                        notification,
-                        client_clone_handler,
-                        plugin_clone,
-                        label_clone,
-                        wallet_keys_clone,
-                        client_pubkey,
-                    )
-                })
+            while let Some(notification) = notifications.next().await {
+                if let Err(e) = nwc_request_handler(
+                    notification,
+                    &nostr_client_clone,
+                    &plugin_clone,
+                    &label_clone,
+                    &wallet_keys,
+                    client_pubkey,
+                )
                 .await
-            {
-                Ok(()) => {
-                    log::info!("NWC handler for `{label_clone}` stopped");
-                    break;
-                }
-                Err(e) => log::warn!("NWC handler for `{label_clone}` had an error: {e}"),
-            };
+                {
+                    log::warn!("NWC handler for `{label_clone}` had an error: {e}");
+                };
+            }
+
+            {};
         }
     });
 
     let mut locked_handles = plugin.state().handles.lock().await;
     locked_handles.insert(
         label.clone(),
-        (client, Keys::new(nwc_store.uri.secret).public_key()),
+        (nostr_client, Keys::new(nwc_store.uri.secret).public_key()),
     );
     Ok(())
 }
@@ -226,29 +233,29 @@ pub fn stop_nwc_budget_job(plugin: &Plugin<PluginState>, label: &String) {
 }
 
 async fn nwc_request_handler(
-    notification: RelayPoolNotification,
-    client: client::Client,
-    plugin: Plugin<PluginState>,
-    label: String,
-    wallet_keys: Keys,
+    notification: ClientNotification,
+    nostr_client: &client::Client,
+    plugin: &Plugin<PluginState>,
+    label: &String,
+    wallet_keys: &Keys,
     client_pubkey: PublicKey,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
     let (relay_url, subscription_id, event) = match notification {
-        RelayPoolNotification::Event {
+        ClientNotification::Event {
             relay_url,
             subscription_id,
             event,
         } => (relay_url, subscription_id, event),
-        RelayPoolNotification::Message {
+        ClientNotification::Message {
             relay_url: _,
             message: _,
-        } => return Ok(false),
-        RelayPoolNotification::Shutdown => return Ok(true),
+        } => return Ok(()),
+        ClientNotification::Shutdown => return Ok(()),
     };
 
     if let Some(expi) = event.tags.expiration() {
         if *expi < Timestamp::now() {
-            return Ok(false);
+            return Ok(());
         }
     }
     log::debug!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
@@ -264,7 +271,7 @@ async fn nwc_request_handler(
             multi_pay_invoice(plugin.clone(), multi_pay_invoice_request, &label).await
         }
         nip47::RequestParams::PayKeysend(pay_keysend_request) => {
-            pay_keysend_response(plugin, pay_keysend_request, &label).await
+            pay_keysend_response(plugin.clone(), pay_keysend_request, &label).await
         }
         nip47::RequestParams::MultiPayKeysend(multi_pay_keysend_request) => {
             multi_pay_keysend(plugin.clone(), multi_pay_keysend_request, &label).await
@@ -281,13 +288,13 @@ async fn nwc_request_handler(
         nip47::RequestParams::GetBalance => get_balance_response(plugin.clone(), &label).await,
         nip47::RequestParams::GetInfo => get_info_response(plugin.clone(), &label).await,
         nip47::RequestParams::MakeHoldInvoice(make_hold_invoice_request) => {
-            make_hold_invoice_response(plugin.clone(), make_hold_invoice_request, &label).await
+            make_hold_invoice_response(plugin.clone(), make_hold_invoice_request).await
         }
         nip47::RequestParams::CancelHoldInvoice(cancel_hold_invoice_request) => {
-            cancel_hold_invoice_response(plugin.clone(), cancel_hold_invoice_request, &label).await
+            cancel_hold_invoice_response(plugin.clone(), cancel_hold_invoice_request).await
         }
         nip47::RequestParams::SettleHoldInvoice(settle_hold_invoice_request) => {
-            settle_hold_invoice_response(plugin.clone(), settle_hold_invoice_request, &label).await
+            settle_hold_invoice_response(plugin.clone(), settle_hold_invoice_request).await
         }
     };
     for (response, id) in responses {
@@ -309,7 +316,7 @@ async fn nwc_request_handler(
                 }
             };
 
-        let send_result = match client.send_event(&response_event).await {
+        let send_result = match nostr_client.send_event(&response_event).await {
             Ok(o) => o,
             Err(e) => {
                 log::warn!("Error sending response event! {e}");
@@ -330,7 +337,7 @@ async fn nwc_request_handler(
         log::debug!("SENT RESPONSE {response_event:?}");
     }
 
-    Ok(false)
+    Ok(())
 }
 
 fn check_nip44_support(event: &Event) -> bool {
