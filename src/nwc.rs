@@ -37,9 +37,9 @@ use crate::{
     },
     nwc_info::get_info_response,
     nwc_invoice::make_invoice_response,
-    nwc_keysend::{multi_pay_keysend, pay_keysend_response},
+    nwc_keysend::pay_keysend_response,
     nwc_lookups::{list_transactions_response, lookup_invoice_response},
-    nwc_pay::{multi_pay_invoice, pay_invoice_response},
+    nwc_pay::pay_invoice_response,
     structs::{NwcStore, PluginState},
     tasks::budget_task,
     util::{build_capabilities, build_notifications_vec, is_read_only_nwc},
@@ -236,7 +236,7 @@ async fn nwc_request_handler(
     notification: ClientNotification,
     nostr_client: &client::Client,
     plugin: &Plugin<PluginState>,
-    label: &String,
+    label: &str,
     wallet_keys: &Keys,
     client_pubkey: PublicKey,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -249,8 +249,8 @@ async fn nwc_request_handler(
         ClientNotification::Message {
             relay_url: _,
             message: _,
-        } => return Ok(()),
-        ClientNotification::Shutdown => return Ok(()),
+        }
+        | ClientNotification::Shutdown => return Ok(()),
     };
 
     if let Some(expi) = event.tags.expiration() {
@@ -261,20 +261,14 @@ async fn nwc_request_handler(
     log::debug!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
     let mut use_nip44 = check_nip44_support(&event);
 
-    let request = decrypt_request(&event.content, &wallet_keys, &client_pubkey, &mut use_nip44)?;
+    let request = decrypt_request(&event.content, wallet_keys, &client_pubkey, &mut use_nip44)?;
 
     let responses = match request.params {
         nip47::RequestParams::PayInvoice(pay_invoice_request) => {
-            pay_invoice_response(plugin.clone(), pay_invoice_request, &label).await
-        }
-        nip47::RequestParams::MultiPayInvoice(multi_pay_invoice_request) => {
-            multi_pay_invoice(plugin.clone(), multi_pay_invoice_request, &label).await
+            pay_invoice_response(plugin.clone(), pay_invoice_request, label).await
         }
         nip47::RequestParams::PayKeysend(pay_keysend_request) => {
-            pay_keysend_response(plugin.clone(), pay_keysend_request, &label).await
-        }
-        nip47::RequestParams::MultiPayKeysend(multi_pay_keysend_request) => {
-            multi_pay_keysend(plugin.clone(), multi_pay_keysend_request, &label).await
+            pay_keysend_response(plugin.clone(), pay_keysend_request, label).await
         }
         nip47::RequestParams::MakeInvoice(make_invoice_request) => {
             make_invoice_response(plugin.clone(), make_invoice_request).await
@@ -285,8 +279,8 @@ async fn nwc_request_handler(
         nip47::RequestParams::ListTransactions(list_transactions_request) => {
             list_transactions_response(plugin.clone(), list_transactions_request).await
         }
-        nip47::RequestParams::GetBalance => get_balance_response(plugin.clone(), &label).await,
-        nip47::RequestParams::GetInfo => get_info_response(plugin.clone(), &label).await,
+        nip47::RequestParams::GetBalance => get_balance_response(plugin.clone(), label).await,
+        nip47::RequestParams::GetInfo => get_info_response(plugin.clone(), label).await,
         nip47::RequestParams::MakeHoldInvoice(make_hold_invoice_request) => {
             make_hold_invoice_response(plugin.clone(), make_hold_invoice_request).await
         }
@@ -299,7 +293,7 @@ async fn nwc_request_handler(
     };
     for (response, id) in responses {
         let content =
-            match encrypt_response_content(&response, &wallet_keys, &client_pubkey, use_nip44) {
+            match encrypt_response_content(&response, wallet_keys, &client_pubkey, use_nip44) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("{e}");
@@ -308,7 +302,7 @@ async fn nwc_request_handler(
             };
 
         let response_event =
-            match build_response_event(event.id, content, &wallet_keys, client_pubkey, id) {
+            match build_response_event(event.id, content, wallet_keys, client_pubkey, id) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("Error signing reponse event! {e}");

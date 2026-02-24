@@ -275,7 +275,7 @@ async fn lookup_invoice(
 
         let state = match hold_invoice.state() {
             hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
-            hold::InvoiceState::Accepted => nip47::TransactionState::Pending, // TODO ACCEPTED STATE
+            hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
             hold::InvoiceState::Paid => nip47::TransactionState::Settled,
             hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
         };
@@ -462,7 +462,7 @@ async fn list_transactions(
 
                 let state = match hold_invoice.state() {
                     hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
-                    hold::InvoiceState::Accepted => nip47::TransactionState::Pending, // TODO: ACCEPTED STATE
+                    hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
                     hold::InvoiceState::Paid => nip47::TransactionState::Settled,
                     hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
                 };

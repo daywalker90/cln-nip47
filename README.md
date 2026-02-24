@@ -132,9 +132,7 @@ For methods or notifications related to holdinvoices you need v0.3.2+ of [hold](
 
 ## Supported NWC methods
 * ``pay_invoice``
-* ``multi_pay_invoice``
 * ``pay_keysend`` (no ``preimage`` in request allowed since CLN only supports generating it itself)
-* ``multi_pay_keysend`` (no ``preimage`` in request allowed since CLN only supports generating it itself)
 * ``make_invoice``
 * ``lookup_invoice``
 * ``list_transactions``

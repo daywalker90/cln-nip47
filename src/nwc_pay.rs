@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
@@ -11,7 +9,6 @@ use cln_rpc::{
     RpcError,
 };
 use nostr::nips::nip47;
-use tokio::time;
 
 use crate::{
     structs::{NwcStore, PluginState, NOT_INV_ERR},
@@ -379,36 +376,4 @@ async fn pay_with_legacy_full(
         id,
     )
     .await
-}
-
-pub async fn multi_pay_invoice(
-    plugin: Plugin<PluginState>,
-    params: nip47::MultiPayInvoiceRequest,
-    label: &str,
-) -> Vec<(nip47::Response, Option<String>)> {
-    let mut responses = Vec::new();
-    for pay in params.invoices {
-        let result = pay_invoice(plugin.clone(), pay, label).await;
-        let response_res = match result {
-            Ok((resp, id)) => (
-                nip47::Response {
-                    result_type: nip47::Method::MultiPayInvoice,
-                    error: None,
-                    result: Some(nip47::ResponseResult::MultiPayInvoice(resp)),
-                },
-                id,
-            ),
-            Err((e, id)) => (
-                nip47::Response {
-                    result_type: nip47::Method::MultiPayInvoice,
-                    error: Some(e),
-                    result: None,
-                },
-                id,
-            ),
-        };
-        responses.push(response_res);
-        time::sleep(Duration::from_millis(100)).await;
-    }
-    responses
 }

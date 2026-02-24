@@ -64,12 +64,8 @@ pub const WALLET_READ_METHODS: [nip47::Method; 5] = [
     nip47::Method::GetBalance,
     nip47::Method::GetInfo,
 ];
-pub const WALLET_PAY_METHODS: [nip47::Method; 4] = [
-    nip47::Method::PayInvoice,
-    nip47::Method::MultiPayInvoice,
-    nip47::Method::PayKeysend,
-    nip47::Method::MultiPayKeysend,
-];
+pub const WALLET_PAY_METHODS: [nip47::Method; 2] =
+    [nip47::Method::PayInvoice, nip47::Method::PayKeysend];
 pub const WALLET_HOLD_METHODS: [nip47::Method; 3] = [
     nip47::Method::MakeHoldInvoice,
     nip47::Method::CancelHoldInvoice,

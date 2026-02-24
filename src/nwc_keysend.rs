@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 
 use cln_plugin::Plugin;
 use cln_rpc::{
@@ -6,7 +6,6 @@ use cln_rpc::{
     primitives::{Amount, PublicKey, TlvEntry, TlvStream},
 };
 use nostr::nips::nip47;
-use tokio::time;
 
 use crate::{
     structs::PluginState,
@@ -148,37 +147,4 @@ async fn pay_keysend(
             }),
         },
     }
-}
-
-pub async fn multi_pay_keysend(
-    plugin: Plugin<PluginState>,
-    params: nip47::MultiPayKeysendRequest,
-    label: &str,
-) -> Vec<(nip47::Response, Option<String>)> {
-    let mut responses = Vec::new();
-    for pay in params.keysends {
-        let result = pay_keysend(plugin.clone(), pay.clone(), label).await;
-        let id = if let Some(i) = pay.id { i } else { pay.pubkey };
-        let response_res = match result {
-            Ok(resp) => (
-                nip47::Response {
-                    result_type: nip47::Method::MultiPayKeysend,
-                    error: None,
-                    result: Some(nip47::ResponseResult::MultiPayKeysend(resp)),
-                },
-                Some(id),
-            ),
-            Err(e) => (
-                nip47::Response {
-                    result_type: nip47::Method::MultiPayKeysend,
-                    error: Some(e),
-                    result: None,
-                },
-                Some(id),
-            ),
-        };
-        responses.push(response_res);
-        time::sleep(Duration::from_millis(100)).await;
-    }
-    responses
 }
