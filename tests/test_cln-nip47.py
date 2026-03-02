@@ -140,7 +140,7 @@ async def test_get_balance(nostr_relay, node_factory, get_plugin):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
         ],
@@ -195,7 +195,7 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
             "plugin": get_plugin,
             "nip47-relays": url,
         },
-        broken_log=r"Relay receiver exited with error",
+        broken_log=r"Relay receiver exited with error|Connection failed",
     )
     node_get_info = l1.rpc.call("getinfo", {})
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
@@ -307,7 +307,7 @@ async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F81
             "plugin": get_plugin,
             "nip47-relays": url,
         },
-        broken_log=r"Relay receiver exited with error",
+        broken_log=r"Relay receiver exited with error|Connection failed",
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
@@ -396,7 +396,7 @@ async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
             {"log-level": "debug"},
@@ -456,7 +456,7 @@ async def test_multi_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F8
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
             {"log-level": "debug"},
@@ -549,7 +549,7 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
             {"log-level": "debug"},
@@ -569,10 +569,12 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
         },
     )
     wait_for(
-        lambda: l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 3001
+        lambda: (
+            l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 3001
+        )
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
@@ -779,7 +781,7 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
         ],
@@ -798,10 +800,12 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
         },
     )
     wait_for(
-        lambda: l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 30001
+        lambda: (
+            l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 30001
+        )
     )
     uri_str = l1.rpc.call("nip47-create", ["test1"])["uri"]
     LOGGER.info(uri_str)
@@ -878,7 +882,7 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
             {"log-level": "debug", "plugin": get_plugin, "nip47-relays": url},
@@ -921,16 +925,20 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
     pay1_list = l1.rpc.call("listpays", {"bolt11": invoice["bolt11"]})["pays"][0]
 
     wait_for(
-        lambda: l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 3000
+        lambda: (
+            l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 3000
+        )
     )
     wait_for(
-        lambda: l3.rpc.call("listpeerchannels", [l2.info["id"]])["channels"][0][
-            "spendable_msat"
-        ]
-        > 3000
+        lambda: (
+            l3.rpc.call("listpeerchannels", [l2.info["id"]])["channels"][0][
+                "spendable_msat"
+            ]
+            > 3000
+        )
     )
 
     result = await nwc.make_invoice(
@@ -1049,7 +1057,7 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
         ],
@@ -1102,7 +1110,7 @@ async def test_multi_pay(nostr_relay, node_factory, get_plugin):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
         ],
@@ -1187,7 +1195,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
         ],
@@ -1335,7 +1343,7 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
         ],
