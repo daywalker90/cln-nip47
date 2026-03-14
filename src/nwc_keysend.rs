@@ -5,7 +5,7 @@ use cln_rpc::{
     model::requests::KeysendRequest,
     primitives::{Amount, PublicKey, TlvEntry, TlvStream},
 };
-use nostr_sdk::nips::nip47;
+use nostr::nips::nip47;
 use tokio::time;
 
 use crate::{

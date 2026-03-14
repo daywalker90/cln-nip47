@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
-        requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest},
+        requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest, ListpeerchannelsRequest},
         responses::{
             DecodeResponse,
             ListinvoicesInvoices,
@@ -16,14 +16,11 @@ use cln_rpc::{
     primitives::Sha256,
     ClnRpc,
 };
-use nostr_sdk::{
-    nips::nip47,
-    nostr::{key::PublicKey, EventBuilder, Kind, Tag},
-    Client,
-    Timestamp,
-};
+use nostr::{key::PublicKey, nips::nip47, EventBuilder, Kind, Tag, Timestamp};
+use nostr_sdk::client::Client;
 
 use crate::{
+    hold::{list_request::Constraint, InvoiceState, ListRequest, TrackRequest},
     structs::{PluginState, NOT_INV_ERR},
     OPT_NOTIFICATIONS,
 };
@@ -340,7 +337,7 @@ async fn send_notification(
     client: &Client,
     client_pubkey: &PublicKey,
 ) -> Result<(), anyhow::Error> {
-    let signer = client.signer().await?;
+    let signer = client.signer().unwrap().clone();
     log::debug!("NOTIFICATION: {notification}");
     let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, notification).await?;
     let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
@@ -378,5 +375,132 @@ async fn send_notification(
     }
     log::debug!("NIP44 NOTIFICATION SENT: {event_nip44:?}");
 
+    Ok(())
+}
+
+pub async fn holdinvoice_accepted_handler(
+    plugin: Plugin<PluginState>,
+    payment_hash: Vec<u8>,
+) -> Result<(), anyhow::Error> {
+    let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
+
+    let track_request = TrackRequest {
+        payment_hash: payment_hash.clone(),
+    };
+    let mut track_stream = hold_client.track(track_request).await?.into_inner();
+
+    while let Some(response) = track_stream.message().await? {
+        log::debug!("Invoice status: {}", response.state().as_str_name());
+        if response.state() == InvoiceState::Accepted {
+            break;
+        }
+    }
+
+    let list_request = ListRequest {
+        constraint: Some(Constraint::PaymentHash(payment_hash.clone())),
+    };
+
+    let hold_lookup = hold_client.list(list_request).await?.into_inner();
+
+    if hold_lookup.invoices.len() != 1 {
+        return Err(anyhow!("hold plugin did not return exactly one invoice"));
+    }
+
+    let hold_invoice = hold_lookup.invoices.first().unwrap();
+
+    let mut rpc = plugin.state().rpc_lock.lock().await;
+
+    let invoice_decoded = rpc
+        .call_typed(&DecodeRequest {
+            string: hold_invoice.invoice.clone(),
+        })
+        .await?;
+
+    let amount = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+            invoice_decoded.invoice_amount_msat.unwrap().msat()
+        }
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            if let Some(amt) = invoice_decoded.amount_msat {
+                amt.msat()
+            } else {
+                // amount: `any` but have to put a value...
+                0
+            }
+        }
+        _ => return Err(anyhow!("hold plugin did not return an invoice string")),
+    };
+
+    let created_at = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+            Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
+        }
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            Timestamp::from_secs(invoice_decoded.created_at.unwrap())
+        }
+        _ => return Err(anyhow!("hold plugin did not return an invoice string")),
+    };
+
+    let expires_at = match invoice_decoded.item_type {
+        cln_rpc::model::responses::DecodeType::BOLT12_INVOICE => {
+            created_at
+                + Timestamp::from_secs(u64::from(invoice_decoded.invoice_relative_expiry.unwrap()))
+        }
+        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => {
+            created_at + Timestamp::from_secs(invoice_decoded.expiry.unwrap())
+        }
+        _ => return Err(anyhow!("hold plugin did not return an invoice string")),
+    };
+
+    let list_peer_channels = rpc
+        .call_typed(&ListpeerchannelsRequest {
+            id: None,
+            short_channel_id: None,
+        })
+        .await?
+        .channels;
+
+    let payment_hash_hash = Sha256::from_str(&hex::encode(payment_hash))?;
+
+    let mut lowest_htlc_expiry = 0;
+
+    for peer in list_peer_channels {
+        if let Some(htlcs) = peer.htlcs {
+            for htlc in htlcs {
+                if htlc.payment_hash != payment_hash_hash {
+                    continue;
+                }
+                if htlc.expiry < lowest_htlc_expiry {
+                    lowest_htlc_expiry = htlc.expiry;
+                }
+            }
+        }
+    }
+
+    let clients = plugin.state().handles.lock().await;
+
+    let content = nip47::Notification {
+        notification_type: nip47::NotificationType::HoldInvoiceAccepted,
+        notification: nip47::NotificationResult::HoldInvoiceAccepted(
+            nip47::HoldInvoiceAcceptedNotification {
+                transaction_type: nip47::TransactionType::Incoming,
+                invoice: hold_invoice.invoice.clone(),
+                description: None,
+                description_hash: None,
+                payment_hash: hex::encode(&hold_invoice.payment_hash),
+                amount,
+                created_at,
+                expires_at,
+                settle_deadline: lowest_htlc_expiry,
+                metadata: None,
+                state: Some(nip47::TransactionState::Accepted),
+            },
+        ),
+    };
+    let notification = serde_json::to_string(&content).unwrap();
+
+    for (client, client_pubkey) in clients.values() {
+        send_notification(&notification, client, client_pubkey).await?;
+    }
     Ok(())
 }

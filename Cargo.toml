@@ -18,14 +18,32 @@ cln-plugin = "0.5"
 # cln-plugin = { path = "../lightning/plugins/", version = "^0.4" }
 parking_lot = "0.12"
 
-# nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "f7122f5", features = ["nip47", "nip04", "nip44"]}
-nostr-sdk = { version = "0.44", features = ["nip47", "nip04", "nip44"] }
+nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "bf3028eb11b4e324c0c660b4e4c83348cdcc00c2" }
+nostr = { git = "https://github.com/rust-nostr/nostr.git", rev = "bf3028eb11b4e324c0c660b4e4c83348cdcc00c2", features = [
+    "nip47",
+    "nip04",
+    "nip44",
+] }
+# nostr-sdk = { version = "0.44", features = ["nip47", "nip04", "nip44"] }
+
+futures = "0.3"
 
 uuid = { version = "1", features = ["v4"] }
 
 hex = "0.4"
 
 regex = "1"
+
+tonic = { version = "0.14", default-features = false, features = [
+    "codegen",
+    "transport",
+    "tls-ring",
+] }
+prost = "0.14"
+tonic-prost = "0.14"
+
+[build-dependencies]
+tonic-prost-build = "0.14"
 
 
 [profile.optimized]

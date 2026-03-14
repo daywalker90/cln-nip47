@@ -81,3 +81,17 @@ if [ -d "$proto_path" ]; then
         exit 1
     fi
 fi
+
+hold_url="https://github.com/BoltzExchange/hold/releases/download/v0.3.3/hold-linux-amd64.tar.gz"
+
+if ! curl -L "$hold_url" -o "$script_dir/hold-linux-amd64.tar.gz"; then
+    echo "Error downloading the file from $hold_url" >&2
+    exit 1
+fi
+
+if ! tar -xzvf "$script_dir/hold-linux-amd64.tar.gz" -C "$script_dir"; then
+    echo "Error extracting the contents of hold-linux-amd64.tar.gz" >&2
+    exit 1
+fi
+
+mv "$script_dir/build/hold-linux-amd64" "$script_dir/hold"

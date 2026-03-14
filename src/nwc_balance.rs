@@ -1,6 +1,6 @@
 use cln_plugin::Plugin;
 use cln_rpc::{model::requests::ListpeerchannelsRequest, primitives::ChannelState};
-use nostr_sdk::nips::nip47;
+use nostr::nips::nip47;
 
 use crate::{structs::PluginState, util::load_nwc_store};
 
