@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "cln-nip47"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "cln-plugin",

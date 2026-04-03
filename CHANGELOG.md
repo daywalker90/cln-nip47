@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.8] 2026-04-03
+
+### Changed
+- updated cln dependencies
+
 ## [0.1.7] 2025-11-27
 
 ### Fixed
