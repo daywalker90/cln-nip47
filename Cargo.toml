@@ -1,7 +1,7 @@
 [package]
 name = "cln-nip47"
 version = "0.1.7"
-edition = "2021"
+edition = "2024"
 rust-version = "1.85.0"
 
 [dependencies]
@@ -12,10 +12,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 tokio = { version = "1", features = ["fs", "sync", "rt-multi-thread"] }
-cln-rpc = "0.5"
-# cln-rpc = { path = "../lightning/cln-rpc/", version = "^0.4" }
-cln-plugin = "0.5"
-# cln-plugin = { path = "../lightning/plugins/", version = "^0.4" }
+cln-rpc = "0.6"
+# cln-rpc = { path = "../lightning/cln-rpc/", version = "^0.6" }
+cln-plugin = "0.6"
+# cln-plugin = { path = "../lightning/plugins/", version = "^0.6" }
 parking_lot = "0.12"
 
 # nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "f7122f5", features = ["nip47", "nip04", "nip44"]}

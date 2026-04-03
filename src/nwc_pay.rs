@@ -318,6 +318,7 @@ async fn pay_with_xpay_full(
             retry_for: None,
             layers: None,
             invstring: params.invoice,
+            payer_note: None,
         })
         .await
         .map_err(|e| map_cln_error_to_nip47(&e, id, true))?;

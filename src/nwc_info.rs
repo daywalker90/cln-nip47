@@ -64,7 +64,7 @@ async fn get_info(
     let methods = build_methods_vec(is_read_only_nwc(&nwc_store), &plugin);
 
     Ok(nip47::GetInfoResponse {
-        alias: get_info.alias,
+        alias: Some(get_info.alias),
         color: Some(get_info.color),
         pubkey: Some(pubkey),
         network: Some(network),

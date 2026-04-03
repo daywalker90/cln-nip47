@@ -2,11 +2,11 @@ use std::{path::Path, time::Duration};
 
 use anyhow::anyhow;
 use cln_plugin::{
-    options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
     Builder,
     Plugin,
+    options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
 };
-use cln_rpc::{model::requests::ListdatastoreRequest, ClnRpc};
+use cln_rpc::{ClnRpc, model::requests::ListdatastoreRequest};
 use nostr_sdk::nips::nip47;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
@@ -63,10 +63,12 @@ pub const WALLET_NOTIFICATIONS: [nip47::NotificationType; 2] = [
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    std::env::set_var(
-        "CLN_PLUGIN_LOG",
-        "cln_plugin=info,cln_rpc=info,cln_nip47=debug,info",
-    );
+    unsafe {
+        std::env::set_var(
+            "CLN_PLUGIN_LOG",
+            "cln_plugin=info,cln_rpc=info,cln_nip47=debug,info",
+        );
+    };
     log_panics::init();
 
     let state;

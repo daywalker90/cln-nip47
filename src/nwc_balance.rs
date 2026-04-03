@@ -47,6 +47,7 @@ async fn get_balance(
             .call_typed(&ListpeerchannelsRequest {
                 id: None,
                 short_channel_id: None,
+                channel_id: None,
             })
             .await
             .map_err(|e| nip47::NIP47Error {

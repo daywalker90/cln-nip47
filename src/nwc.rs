@@ -3,9 +3,6 @@ use std::{borrow::Cow, time::Duration};
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use nostr_sdk::{
-    client,
-    nips::{nip04, nip44, nip47},
-    nostr::{Filter, Kind, Tag},
     Alphabet,
     Client,
     Event,
@@ -20,10 +17,15 @@ use nostr_sdk::{
     SingleLetterTag,
     TagKind,
     Timestamp,
+    client,
+    nips::{nip04, nip44, nip47},
+    nostr::{Filter, Kind, Tag},
 };
 use tokio::{sync::oneshot, time};
 
 use crate::{
+    OPT_NOTIFICATIONS,
+    STARTUP_DELAY,
     nwc_balance::get_balance_response,
     nwc_hold::{
         cancel_hold_invoice_response,
@@ -38,8 +40,6 @@ use crate::{
     structs::{NwcStore, PluginState},
     tasks::budget_task,
     util::{build_capabilities, build_notifications_vec, is_read_only_nwc},
-    OPT_NOTIFICATIONS,
-    STARTUP_DELAY,
 };
 
 pub async fn run_nwc(
@@ -145,7 +145,7 @@ pub async fn run_nwc(
                     break;
                 }
                 Err(e) => log::warn!("NWC handler for `{label_clone}` had an error: {e}"),
-            };
+            }
         }
     });
 
