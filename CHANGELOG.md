@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.9] 2026-04-23
+
+### Fixed
+- ``nip47-budget``: race condition where new budget settings would sometimes be ignored
+
 ## [0.1.8] 2026-04-03
 
 ### Changed

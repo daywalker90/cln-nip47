@@ -6,15 +6,15 @@ use cln_rpc::model::requests::{
     DeldatastoreRequest,
     ListdatastoreRequest,
 };
-use nostr_sdk::{nips::nip47::NostrWalletConnectURI, Keys, SecretKey, Timestamp};
+use nostr_sdk::{Keys, SecretKey, Timestamp, nips::nip47::NostrWalletConnectURI};
 use serde_json::json;
 
 use crate::{
+    PLUGIN_NAME,
     nwc::{run_nwc, send_nwc_info_event, start_nwc_budget_job, stop_nwc, stop_nwc_budget_job},
     parse::parse_time_period,
     structs::{BudgetIntervalConfig, NwcStore, PluginState},
     util::{build_capabilities, is_read_only_nwc, load_nwc_store, update_nwc_store},
-    PLUGIN_NAME,
 };
 
 pub async fn nwc_create(
@@ -140,11 +140,11 @@ pub async fn nwc_budget(
 
     let is_new_nwc_read_only = is_read_only_nwc(&nwc_store);
 
+    update_nwc_store(&mut rpc, &label, nwc_store.clone()).await?;
+
     if nwc_store.interval_config.is_some() {
         start_nwc_budget_job(&plugin, label.clone());
     }
-
-    update_nwc_store(&mut rpc, &label, nwc_store.clone()).await?;
 
     if is_old_nwc_read_only != is_new_nwc_read_only {
         let wallet_keys = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
