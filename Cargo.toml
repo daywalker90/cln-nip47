@@ -18,8 +18,8 @@ cln-plugin = "0.6"
 # cln-plugin = { path = "../lightning/plugins/", version = "^0.6" }
 parking_lot = "0.12"
 
-nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "bf3028eb11b4e324c0c660b4e4c83348cdcc00c2" }
-nostr = { git = "https://github.com/rust-nostr/nostr.git", rev = "bf3028eb11b4e324c0c660b4e4c83348cdcc00c2", features = [
+nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "6eb03213c7d3d9eaaa9b74c142f2b8eb79445af6" }
+nostr = { git = "https://github.com/rust-nostr/nostr.git", rev = "6eb03213c7d3d9eaaa9b74c142f2b8eb79445af6", features = [
     "nip47",
     "nip04",
     "nip44",
