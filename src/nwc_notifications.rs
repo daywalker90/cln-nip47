@@ -342,7 +342,7 @@ async fn send_notification(
     let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, notification).await?;
     let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
         .tag(Tag::public_key(*client_pubkey))
-        .sign(&signer)
+        .sign_async(&signer)
         .await?;
     let nip04_result = client.send_event(&event_nip04).await?;
     if nip04_result.success.is_empty() {
@@ -360,7 +360,7 @@ async fn send_notification(
     let content_encrypted_nip44 = signer.nip44_encrypt(client_pubkey, notification).await?;
     let event_nip44 = EventBuilder::new(Kind::from_u16(23197), content_encrypted_nip44)
         .tag(Tag::public_key(*client_pubkey))
-        .sign(&signer)
+        .sign_async(&signer)
         .await?;
     let nip44_result = client.send_event(&event_nip44).await?;
     if nip44_result.success.is_empty() {

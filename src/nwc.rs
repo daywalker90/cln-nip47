@@ -1,10 +1,9 @@
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use futures::StreamExt;
 use nostr::{
-    Alphabet,
     Event,
     EventBuilder,
     EventId,
@@ -13,12 +12,10 @@ use nostr::{
     Kind,
     PublicKey,
     SecretKey,
-    SignerError,
-    SingleLetterTag,
     Tag,
-    TagKind,
     Timestamp,
     nips::{nip04, nip44, nip47},
+    signer::SignerError,
 };
 use nostr_sdk::{
     client::{self, Client, ClientNotification, Error},
@@ -149,7 +146,7 @@ pub async fn run_nwc(
                 .await
                 {
                     log::warn!("NWC handler for `{label_clone}` had an error: {e}");
-                };
+                }
             }
 
             {};
@@ -254,7 +251,7 @@ async fn nwc_request_handler(
     };
 
     if let Some(expi) = event.tags.expiration() {
-        if *expi < Timestamp::now() {
+        if expi < Timestamp::now() {
             return Ok(());
         }
     }
@@ -335,13 +332,12 @@ async fn nwc_request_handler(
 }
 
 fn check_nip44_support(event: &Event) -> bool {
-    if let Some(encryption_tag) = event
-        .tags
-        .find(TagKind::Custom(Cow::Borrowed("encryption")))
-    {
-        if let Some(enc_tag_content) = encryption_tag.content() {
-            if enc_tag_content.contains("nip44_v2") {
-                return true;
+    for tag in event.tags.iter() {
+        if tag.kind() == "encryption" {
+            if let Some(enc_tag_content) = tag.content() {
+                if enc_tag_content.contains("nip44_v2") {
+                    return true;
+                }
             }
         }
     }
@@ -442,13 +438,7 @@ fn build_response_event(
         .tag(Tag::event(event_id))
         .tag(Tag::public_key(client_pubkey));
     if let Some(i) = id {
-        response_builder = response_builder.tag(Tag::custom(
-            TagKind::SingleLetter(SingleLetterTag {
-                character: Alphabet::D,
-                uppercase: false,
-            }),
-            vec![i],
-        ));
+        response_builder = response_builder.tag(Tag::identifier(i));
     }
     match response_builder.sign_with_keys(wallet_keys) {
         Ok(o) => Ok(o),
