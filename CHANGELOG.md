@@ -6,6 +6,9 @@
 - holdinvoice methods: ``make_hold_invoice``, ``cancel_hold_invoice``, ``settle_hold_invoice``
 - holdinvoice notification: ``hold_invoice_accepted``
 
+### Changed
+- `pay_keysend` will use the new CLN `xkeysend` command using CLN v26.06+
+
 ### Removed
 - ``multi_pay_invoice`` and ``multi_pay_keysend``, they were removed from the spec
 

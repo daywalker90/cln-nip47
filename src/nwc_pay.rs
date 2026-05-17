@@ -1,17 +1,17 @@
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
+    RpcError,
     model::{
         requests::{DecodeRequest, PayRequest, XpayRequest},
         responses::DecodeResponse,
     },
     primitives::{Amount, Secret},
-    ClnRpc,
-    RpcError,
 };
 use nostr::nips::nip47;
 
 use crate::{
-    structs::{NwcStore, PluginState, NOT_INV_ERR},
+    structs::{NOT_INV_ERR, NwcStore, PluginState},
     util::{at_or_above_version, budget_amount_check, load_nwc_store, update_nwc_store},
 };
 
@@ -316,6 +316,9 @@ async fn pay_with_xpay_full(
             layers: None,
             invstring: params.invoice,
             payer_note: None,
+            dev_use_shadow: None,
+            label: None,
+            localinvreqid: None,
         })
         .await
         .map_err(|e| map_cln_error_to_nip47(&e, id, true))?;
