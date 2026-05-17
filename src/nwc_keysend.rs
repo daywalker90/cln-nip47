@@ -1,15 +1,15 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::KeysendRequest,
+    model::requests::{KeysendRequest, XkeysendRequest},
     primitives::{Amount, PublicKey, TlvEntry, TlvStream},
 };
 use nostr::nips::nip47;
 
 use crate::{
     structs::PluginState,
-    util::{budget_amount_check, load_nwc_store, update_nwc_store},
+    util::{at_or_above_version, budget_amount_check, load_nwc_store, update_nwc_store},
 };
 
 pub async fn pay_keysend_response(
@@ -76,75 +76,147 @@ async fn pay_keysend(
         message: e.to_string(),
     })?;
 
-    let mut extratlvs = TlvStream {
-        entries: Vec::new(),
-    };
-    for tlv in params.tlv_records {
-        extratlvs.entries.push(TlvEntry {
-            typ: tlv.tlv_type,
-            value: tlv.value.as_bytes().to_owned(),
-        });
-    }
-    let extratlvs = if extratlvs.entries.is_empty() {
-        None
-    } else {
-        Some(extratlvs)
-    };
+    let my_cln_version = plugin.state().config.lock().my_cln_version.clone();
 
-    match rpc
-        .call_typed(&KeysendRequest {
-            exemptfee: None,
-            extratlvs,
-            label: None,
-            maxdelay: None,
-            maxfee: None,
-            maxfeepercent: None,
-            retry_for: None,
-            routehints: None,
-            amount_msat: Amount::from_msat(params.amount),
-            destination: pubkey,
-        })
-        .await
-    {
-        Ok(o) => {
-            if let Some(ref mut bdg) = nwc_store.budget_msat {
-                *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
-                update_nwc_store(&mut rpc, label, nwc_store)
-                    .await
-                    .map_err(|e| nip47::NIP47Error {
+    if at_or_above_version(&my_cln_version, "26.06").map_err(|e| nip47::NIP47Error {
+        code: nip47::ErrorCode::Other,
+        message: e.to_string(),
+    })? {
+        let mut extratlvs = HashMap::with_capacity(params.tlv_records.len());
+        for tlv in params.tlv_records {
+            extratlvs.insert(tlv.tlv_type.to_string(), tlv.value);
+        }
+        let extratlvs = if extratlvs.is_empty() {
+            None
+        } else {
+            Some(extratlvs)
+        };
+
+        match rpc
+            .call_typed(&XkeysendRequest {
+                extratlvs,
+                label: None,
+                maxdelay: None,
+                maxfee: None,
+                retry_for: None,
+                layers: None,
+                amount_msat: Amount::from_msat(params.amount),
+                destination: pubkey,
+            })
+            .await
+        {
+            Ok(o) => {
+                if let Some(ref mut bdg) = nwc_store.budget_msat {
+                    *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
+                    update_nwc_store(&mut rpc, label, nwc_store)
+                        .await
+                        .map_err(|e| nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: e.to_string(),
+                        })?;
+                }
+
+                let preimage = hex::encode(o.payment_preimage.to_vec());
+
+                let fees_paid = o.amount_sent_msat.msat() - o.amount_msat.msat();
+
+                Ok(nip47::PayKeysendResponse {
+                    preimage,
+                    fees_paid: Some(fees_paid),
+                })
+            }
+            Err(e) => match e.code {
+                Some(c) => match c {
+                    203 | 205 | 207 | 219 => Err(nip47::NIP47Error {
+                        code: nip47::ErrorCode::PaymentFailed,
+                        message: e.to_string(),
+                    }),
+                    209 => Err(nip47::NIP47Error {
+                        code: nip47::ErrorCode::Other,
+                        message: e.to_string(),
+                    }),
+                    _ => Err(nip47::NIP47Error {
                         code: nip47::ErrorCode::Internal,
                         message: e.to_string(),
-                    })?;
-            }
-
-            let preimage = hex::encode(o.payment_preimage.to_vec());
-
-            let fees_paid = o.amount_sent_msat.msat() - o.amount_msat.msat();
-
-            Ok(nip47::PayKeysendResponse {
-                preimage,
-                fees_paid: Some(fees_paid),
-            })
-        }
-        Err(e) => match e.code {
-            Some(c) => match c {
-                203 | 205 | 210 => Err(nip47::NIP47Error {
-                    code: nip47::ErrorCode::PaymentFailed,
-                    message: e.to_string(),
-                }),
-                206 => Err(nip47::NIP47Error {
-                    code: nip47::ErrorCode::InsufficientBalance,
-                    message: e.to_string(),
-                }),
-                _ => Err(nip47::NIP47Error {
+                    }),
+                },
+                None => Err(nip47::NIP47Error {
                     code: nip47::ErrorCode::Internal,
                     message: e.to_string(),
                 }),
             },
-            None => Err(nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            }),
-        },
+        }
+    } else {
+        let mut extratlvs = TlvStream {
+            entries: Vec::new(),
+        };
+        for tlv in params.tlv_records {
+            extratlvs.entries.push(TlvEntry {
+                typ: tlv.tlv_type,
+                value: tlv.value.as_bytes().to_owned(),
+            });
+        }
+        let extratlvs = if extratlvs.entries.is_empty() {
+            None
+        } else {
+            Some(extratlvs)
+        };
+
+        match rpc
+            .call_typed(&KeysendRequest {
+                exemptfee: None,
+                extratlvs,
+                label: None,
+                maxdelay: None,
+                maxfee: None,
+                maxfeepercent: None,
+                retry_for: None,
+                routehints: None,
+                amount_msat: Amount::from_msat(params.amount),
+                destination: pubkey,
+            })
+            .await
+        {
+            Ok(o) => {
+                if let Some(ref mut bdg) = nwc_store.budget_msat {
+                    *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
+                    update_nwc_store(&mut rpc, label, nwc_store)
+                        .await
+                        .map_err(|e| nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: e.to_string(),
+                        })?;
+                }
+
+                let preimage = hex::encode(o.payment_preimage.to_vec());
+
+                let fees_paid = o.amount_sent_msat.msat() - o.amount_msat.msat();
+
+                Ok(nip47::PayKeysendResponse {
+                    preimage,
+                    fees_paid: Some(fees_paid),
+                })
+            }
+            Err(e) => match e.code {
+                Some(c) => match c {
+                    203 | 205 | 210 => Err(nip47::NIP47Error {
+                        code: nip47::ErrorCode::PaymentFailed,
+                        message: e.to_string(),
+                    }),
+                    206 => Err(nip47::NIP47Error {
+                        code: nip47::ErrorCode::InsufficientBalance,
+                        message: e.to_string(),
+                    }),
+                    _ => Err(nip47::NIP47Error {
+                        code: nip47::ErrorCode::Internal,
+                        message: e.to_string(),
+                    }),
+                },
+                None => Err(nip47::NIP47Error {
+                    code: nip47::ErrorCode::Internal,
+                    message: e.to_string(),
+                }),
+            },
+        }
     }
 }
