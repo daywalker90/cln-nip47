@@ -2,9 +2,11 @@ use std::{cmp::Reverse, str::FromStr};
 
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::{
         requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest},
         responses::{
+            DecodeResponse,
             DecodeType,
             ListinvoicesInvoices,
             ListinvoicesInvoicesStatus,
@@ -13,13 +15,13 @@ use cln_rpc::{
         },
     },
     primitives::Sha256,
-    ClnRpc,
 };
-use nostr::{nips::nip47, Timestamp};
+use nostr::{Timestamp, nips::nip47};
+use tonic::transport::Channel;
 
 use crate::{
-    hold::{self, list_request::Constraint, ListRequest},
-    structs::{PluginState, NOT_INV_ERR},
+    hold::{self, ListRequest, hold_client::HoldClient, list_request::Constraint},
+    structs::{NOT_INV_ERR, PluginState},
 };
 
 pub async fn lookup_invoice_response(
@@ -127,192 +129,209 @@ async fn lookup_invoice(
 
     if holdinvoice_support {
         let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
-
-        let (hold_invoice, invoice_decoded) = if let Some(ph) = &params.payment_hash {
-            let payment_hash_hash = match hex::decode(ph) {
-                Ok(p) => p,
-                Err(_e) => {
-                    return Err(nip47::NIP47Error {
-                        code: nip47::ErrorCode::Other,
-                        message: "Invalid payment hash".to_owned(),
-                    })
-                }
-            };
-            let list_request = ListRequest {
-                constraint: Some(Constraint::PaymentHash(payment_hash_hash)),
-            };
-            let hold_lookup = hold_client
-                .list(list_request)
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Other,
-                    message: format!("Could not fetch hold invoice: {e}"),
-                })?
-                .into_inner();
-
-            if hold_lookup.invoices.len() != 1 {
-                return Err(nip47::NIP47Error {
-                    code: nip47::ErrorCode::Other,
-                    message: "Transaction not found".to_owned(),
-                });
-            }
-
-            let hold_invoice = hold_lookup.invoices.into_iter().next().unwrap();
-            let invoice_decoded = rpc
-                .call_typed(&DecodeRequest {
-                    string: hold_invoice.invoice.clone(),
-                })
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Internal,
-                    message: e.to_string(),
-                })?;
-
-            (hold_invoice, invoice_decoded)
-        } else {
-            let invoice_decoded = rpc
-                .call_typed(&DecodeRequest {
-                    string: params.invoice.unwrap(),
-                })
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Internal,
-                    message: e.to_string(),
-                })?;
-            let ph = match invoice_decoded.item_type {
-                DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_payment_hash.unwrap(),
-                DecodeType::BOLT11_INVOICE => invoice_decoded.payment_hash.unwrap().to_string(),
-                _ => todo!(),
-            };
-            let payment_hash_hash = match hex::decode(&ph) {
-                Ok(p) => p,
-                Err(_e) => {
-                    return Err(nip47::NIP47Error {
-                        code: nip47::ErrorCode::Other,
-                        message: "Invalid payment hash in invoice".to_owned(),
-                    })
-                }
-            };
-
-            let list_request = ListRequest {
-                constraint: Some(Constraint::PaymentHash(payment_hash_hash)),
-            };
-
-            let hold_lookup = hold_client
-                .list(list_request)
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Other,
-                    message: format!("Could not fetch hold invoice: {e}"),
-                })?
-                .into_inner();
-
-            if hold_lookup.invoices.len() != 1 {
-                return Err(nip47::NIP47Error {
-                    code: nip47::ErrorCode::Other,
-                    message: "Transaction not found".to_owned(),
-                });
-            }
-
-            let hold_invoice = hold_lookup.invoices.into_iter().next().unwrap();
-            let invoice_decoded = rpc
-                .call_typed(&DecodeRequest {
-                    string: hold_invoice.invoice.clone(),
-                })
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Internal,
-                    message: e.to_string(),
-                })?;
-            (hold_invoice, invoice_decoded)
-        };
-        let not_invoice_err = Err(nip47::NIP47Error {
-            code: nip47::ErrorCode::Other,
-            message: NOT_INV_ERR.to_owned(),
-        });
-
-        let description = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
-            DecodeType::BOLT11_INVOICE => invoice_decoded.description,
-            _ => return not_invoice_err,
-        };
-        let description_hash = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => None,
-            DecodeType::BOLT11_INVOICE => invoice_decoded.description_hash.map(|h| h.to_string()),
-            _ => return not_invoice_err,
-        };
-
-        let created_at = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => {
-                Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
-            }
-            DecodeType::BOLT11_INVOICE => Timestamp::from_secs(invoice_decoded.created_at.unwrap()),
-            _ => return not_invoice_err,
-        };
-
-        let amount = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_amount_msat.unwrap().msat(),
-            DecodeType::BOLT11_INVOICE => {
-                if let Some(amt) = invoice_decoded.amount_msat {
-                    amt.msat()
-                } else {
-                    // amount: `any` but have to put a value...
-                    0
-                }
-            }
-            _ => return not_invoice_err,
-        };
-
-        let expires_at = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => invoice_decoded
-                .invoice_relative_expiry
-                .map(|e_at| created_at + Timestamp::from_secs(u64::from(e_at))),
-            DecodeType::BOLT11_INVOICE => invoice_decoded
-                .expiry
-                .map(|e_at| created_at + Timestamp::from_secs(e_at)),
-            _ => return not_invoice_err,
-        };
-
-        let state = match hold_invoice.state() {
-            hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
-            hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
-            hold::InvoiceState::Paid => nip47::TransactionState::Settled,
-            hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
-        };
-
-        let settled_at = if hold_invoice.settled_at() != 0 {
-            Some(Timestamp::from_secs(hold_invoice.settled_at()))
-        } else {
-            None
-        };
-
-        let preimage = if hold_invoice.state() == hold::InvoiceState::Paid {
-            Some(hex::encode(hold_invoice.preimage()))
-        } else {
-            None
-        };
-
-        return Ok(nip47::LookupInvoiceResponse {
-            transaction_type: Some(nip47::TransactionType::Incoming),
-            invoice: Some(hold_invoice.invoice.clone()),
-            description,
-            description_hash,
-            preimage,
-            payment_hash: hex::encode(hold_invoice.payment_hash),
-            amount,
-            fees_paid: 0,
-            created_at,
-            expires_at,
-            settled_at,
-            metadata: None,
-            state: Some(state),
-        });
+        return lookup_holdinvoice(&mut hold_client, &mut rpc, params).await;
     }
 
     Err(nip47::NIP47Error {
         code: nip47::ErrorCode::NotFound,
         message: "Transaction not found".to_owned(),
     })
+}
+
+async fn lookup_holdinvoice(
+    hold_client: &mut HoldClient<Channel>,
+    rpc: &mut ClnRpc,
+    params: nip47::LookupInvoiceRequest,
+) -> Result<nip47::LookupInvoiceResponse, nip47::NIP47Error> {
+    log::debug!("Looking up hold invoice for params {params:#?}");
+    let (hold_invoice, invoice_decoded) =
+        get_and_decode_holdinvoice(rpc, hold_client, params).await?;
+    let not_invoice_err = Err(nip47::NIP47Error {
+        code: nip47::ErrorCode::Other,
+        message: NOT_INV_ERR.to_owned(),
+    });
+
+    let description = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
+        DecodeType::BOLT11_INVOICE => invoice_decoded.description,
+        _ => return not_invoice_err,
+    };
+    let description_hash = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => None,
+        DecodeType::BOLT11_INVOICE => invoice_decoded.description_hash.map(|h| h.to_string()),
+        _ => return not_invoice_err,
+    };
+
+    let created_at = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => {
+            Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
+        }
+        DecodeType::BOLT11_INVOICE => Timestamp::from_secs(invoice_decoded.created_at.unwrap()),
+        _ => return not_invoice_err,
+    };
+
+    let amount = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_amount_msat.unwrap().msat(),
+        DecodeType::BOLT11_INVOICE => {
+            if let Some(amt) = invoice_decoded.amount_msat {
+                amt.msat()
+            } else {
+                // amount: `any` but have to put a value...
+                0
+            }
+        }
+        _ => return not_invoice_err,
+    };
+
+    let expires_at = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => invoice_decoded
+            .invoice_relative_expiry
+            .map(|e_at| created_at + Timestamp::from_secs(u64::from(e_at))),
+        DecodeType::BOLT11_INVOICE => invoice_decoded
+            .expiry
+            .map(|e_at| created_at + Timestamp::from_secs(e_at)),
+        _ => return not_invoice_err,
+    };
+
+    let state = match hold_invoice.state() {
+        hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
+        hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
+        hold::InvoiceState::Paid => nip47::TransactionState::Settled,
+        hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
+    };
+
+    let settled_at = if hold_invoice.settled_at() != 0 {
+        Some(Timestamp::from_secs(hold_invoice.settled_at()))
+    } else {
+        None
+    };
+
+    let preimage = if hold_invoice.state() == hold::InvoiceState::Paid {
+        Some(hex::encode(hold_invoice.preimage()))
+    } else {
+        None
+    };
+
+    Ok(nip47::LookupInvoiceResponse {
+        transaction_type: Some(nip47::TransactionType::Incoming),
+        invoice: Some(hold_invoice.invoice.clone()),
+        description,
+        description_hash,
+        preimage,
+        payment_hash: hex::encode(hold_invoice.payment_hash),
+        amount,
+        fees_paid: 0,
+        created_at,
+        expires_at,
+        settled_at,
+        metadata: None,
+        state: Some(state),
+    })
+}
+
+async fn get_and_decode_holdinvoice(
+    rpc: &mut ClnRpc,
+    hold_client: &mut HoldClient<Channel>,
+    params: nip47::LookupInvoiceRequest,
+) -> Result<(hold::Invoice, DecodeResponse), nip47::NIP47Error> {
+    if let Some(ph) = &params.payment_hash {
+        let payment_hash_hash = match hex::decode(ph) {
+            Ok(p) => p,
+            Err(_e) => {
+                return Err(nip47::NIP47Error {
+                    code: nip47::ErrorCode::Other,
+                    message: "Invalid payment hash".to_owned(),
+                });
+            }
+        };
+        let list_request = ListRequest {
+            constraint: Some(Constraint::PaymentHash(payment_hash_hash)),
+        };
+        let hold_lookup = hold_client
+            .list(list_request)
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: format!("Could not fetch hold invoice: {e}"),
+            })?
+            .into_inner();
+
+        if hold_lookup.invoices.len() != 1 {
+            return Err(nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: "Transaction not found".to_owned(),
+            });
+        }
+
+        let hold_invoice = hold_lookup.invoices.into_iter().next().unwrap();
+        let invoice_decoded = rpc
+            .call_typed(&DecodeRequest {
+                string: hold_invoice.invoice.clone(),
+            })
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: e.to_string(),
+            })?;
+
+        Ok((hold_invoice, invoice_decoded))
+    } else {
+        let invoice_decoded = rpc
+            .call_typed(&DecodeRequest {
+                string: params.invoice.unwrap(),
+            })
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: e.to_string(),
+            })?;
+        let ph = match invoice_decoded.item_type {
+            DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_payment_hash.unwrap(),
+            DecodeType::BOLT11_INVOICE => invoice_decoded.payment_hash.unwrap().to_string(),
+            _ => todo!(),
+        };
+        let payment_hash_hash = match hex::decode(&ph) {
+            Ok(p) => p,
+            Err(_e) => {
+                return Err(nip47::NIP47Error {
+                    code: nip47::ErrorCode::Other,
+                    message: "Invalid payment hash in invoice".to_owned(),
+                });
+            }
+        };
+
+        let list_request = ListRequest {
+            constraint: Some(Constraint::PaymentHash(payment_hash_hash)),
+        };
+
+        let hold_lookup = hold_client
+            .list(list_request)
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: format!("Could not fetch hold invoice: {e}"),
+            })?
+            .into_inner();
+
+        if hold_lookup.invoices.len() != 1 {
+            return Err(nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: "Transaction not found".to_owned(),
+            });
+        }
+
+        let hold_invoice = hold_lookup.invoices.into_iter().next().unwrap();
+        let invoice_decoded = rpc
+            .call_typed(&DecodeRequest {
+                string: hold_invoice.invoice.clone(),
+            })
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: e.to_string(),
+            })?;
+        Ok((hold_invoice, invoice_decoded))
+    }
 }
 
 pub async fn list_transactions_response(
@@ -389,112 +408,8 @@ async fn list_transactions(
 
         if holdinvoice_support {
             let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
-
-            let lookup_request = ListRequest { constraint: None };
-
-            let hold_lookup = hold_client
-                .list(lookup_request)
-                .await
-                .map_err(|e| nip47::NIP47Error {
-                    code: nip47::ErrorCode::Other,
-                    message: format!("Could not fetch hold invoices: {e}"),
-                })?
-                .into_inner();
-
-            for hold_invoice in hold_lookup.invoices {
-                let invoice_decoded = rpc
-                    .call_typed(&DecodeRequest {
-                        string: hold_invoice.invoice.clone(),
-                    })
-                    .await
-                    .map_err(|e| nip47::NIP47Error {
-                        code: nip47::ErrorCode::Internal,
-                        message: e.to_string(),
-                    })?;
-
-                let description = match invoice_decoded.item_type {
-                    DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
-                    DecodeType::BOLT11_INVOICE => invoice_decoded.description,
-                    _ => continue,
-                };
-                let description_hash = match invoice_decoded.item_type {
-                    DecodeType::BOLT12_INVOICE => None,
-                    DecodeType::BOLT11_INVOICE => {
-                        invoice_decoded.description_hash.map(|h| h.to_string())
-                    }
-                    _ => continue,
-                };
-
-                let created_at = match invoice_decoded.item_type {
-                    DecodeType::BOLT12_INVOICE => {
-                        Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
-                    }
-                    DecodeType::BOLT11_INVOICE => {
-                        Timestamp::from_secs(invoice_decoded.created_at.unwrap())
-                    }
-                    _ => continue,
-                };
-
-                let amount = match invoice_decoded.item_type {
-                    DecodeType::BOLT12_INVOICE => {
-                        invoice_decoded.invoice_amount_msat.unwrap().msat()
-                    }
-                    DecodeType::BOLT11_INVOICE => {
-                        if let Some(amt) = invoice_decoded.amount_msat {
-                            amt.msat()
-                        } else {
-                            // amount: `any` but have to put a value...
-                            0
-                        }
-                    }
-                    _ => continue,
-                };
-
-                let expires_at = match invoice_decoded.item_type {
-                    DecodeType::BOLT12_INVOICE => invoice_decoded
-                        .invoice_relative_expiry
-                        .map(|e_at| created_at + Timestamp::from_secs(u64::from(e_at))),
-                    DecodeType::BOLT11_INVOICE => invoice_decoded
-                        .expiry
-                        .map(|e_at| created_at + Timestamp::from_secs(e_at)),
-                    _ => continue,
-                };
-
-                let state = match hold_invoice.state() {
-                    hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
-                    hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
-                    hold::InvoiceState::Paid => nip47::TransactionState::Settled,
-                    hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
-                };
-
-                let settled_at = if hold_invoice.settled_at() != 0 {
-                    Some(Timestamp::from_secs(hold_invoice.settled_at()))
-                } else {
-                    None
-                };
-
-                let preimage = if hold_invoice.state() == hold::InvoiceState::Paid {
-                    Some(hex::encode(hold_invoice.preimage()))
-                } else {
-                    None
-                };
-
-                transactions.push(nip47::LookupInvoiceResponse {
-                    transaction_type: Some(nip47::TransactionType::Incoming),
-                    invoice: Some(hold_invoice.invoice.clone()),
-                    description,
-                    description_hash,
-                    preimage,
-                    payment_hash: hex::encode(hold_invoice.payment_hash),
-                    amount,
-                    fees_paid: 0,
-                    created_at,
-                    expires_at,
-                    settled_at,
-                    metadata: None,
-                    state: Some(state),
-                });
-            }
+            list_holdinvoices_to_transactions(&mut hold_client, &mut rpc, &mut transactions)
+                .await?;
         }
     }
 
@@ -548,6 +463,114 @@ async fn list_transactions(
     Ok(transactions)
 }
 
+async fn list_holdinvoices_to_transactions(
+    hold_client: &mut HoldClient<Channel>,
+    rpc: &mut ClnRpc,
+    transactions: &mut Vec<nip47::LookupInvoiceResponse>,
+) -> Result<(), nip47::NIP47Error> {
+    let lookup_request = ListRequest { constraint: None };
+
+    let hold_lookup = hold_client
+        .list(lookup_request)
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Other,
+            message: format!("Could not fetch hold invoices: {e}"),
+        })?
+        .into_inner();
+
+    for hold_invoice in hold_lookup.invoices {
+        let invoice_decoded = rpc
+            .call_typed(&DecodeRequest {
+                string: hold_invoice.invoice.clone(),
+            })
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: e.to_string(),
+            })?;
+
+        let description = match invoice_decoded.item_type {
+            DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
+            DecodeType::BOLT11_INVOICE => invoice_decoded.description,
+            _ => continue,
+        };
+        let description_hash = match invoice_decoded.item_type {
+            DecodeType::BOLT12_INVOICE => None,
+            DecodeType::BOLT11_INVOICE => invoice_decoded.description_hash.map(|h| h.to_string()),
+            _ => continue,
+        };
+
+        let created_at = match invoice_decoded.item_type {
+            DecodeType::BOLT12_INVOICE => {
+                Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
+            }
+            DecodeType::BOLT11_INVOICE => Timestamp::from_secs(invoice_decoded.created_at.unwrap()),
+            _ => continue,
+        };
+
+        let amount = match invoice_decoded.item_type {
+            DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_amount_msat.unwrap().msat(),
+            DecodeType::BOLT11_INVOICE => {
+                if let Some(amt) = invoice_decoded.amount_msat {
+                    amt.msat()
+                } else {
+                    // amount: `any` but have to put a value...
+                    0
+                }
+            }
+            _ => continue,
+        };
+
+        let expires_at = match invoice_decoded.item_type {
+            DecodeType::BOLT12_INVOICE => invoice_decoded
+                .invoice_relative_expiry
+                .map(|e_at| created_at + Timestamp::from_secs(u64::from(e_at))),
+            DecodeType::BOLT11_INVOICE => invoice_decoded
+                .expiry
+                .map(|e_at| created_at + Timestamp::from_secs(e_at)),
+            _ => continue,
+        };
+
+        let state = match hold_invoice.state() {
+            hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
+            hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
+            hold::InvoiceState::Paid => nip47::TransactionState::Settled,
+            hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
+        };
+
+        let settled_at = if hold_invoice.settled_at() != 0 {
+            Some(Timestamp::from_secs(hold_invoice.settled_at()))
+        } else {
+            None
+        };
+
+        let preimage = if hold_invoice.state() == hold::InvoiceState::Paid {
+            Some(hex::encode(hold_invoice.preimage()))
+        } else {
+            None
+        };
+
+        transactions.push(nip47::LookupInvoiceResponse {
+            transaction_type: Some(nip47::TransactionType::Incoming),
+            invoice: Some(hold_invoice.invoice.clone()),
+            description,
+            description_hash,
+            preimage,
+            payment_hash: hex::encode(hold_invoice.payment_hash),
+            amount,
+            fees_paid: 0,
+            created_at,
+            expires_at,
+            settled_at,
+            metadata: None,
+            state: Some(state),
+        });
+    }
+
+    Ok(())
+}
+
 async fn make_lookup_response_from_listinvoices(
     rpc: &mut ClnRpc,
     list_invoice: ListinvoicesInvoices,
@@ -557,10 +580,12 @@ async fn make_lookup_response_from_listinvoices(
         message: NOT_INV_ERR.to_owned(),
     });
 
-    let invstring = if list_invoice.bolt11.is_some() {
-        list_invoice.bolt11.as_ref().unwrap()
+    let invstring = if let Some(bolt11) = list_invoice.bolt11 {
+        bolt11
+    } else if let Some(bolt12) = list_invoice.bolt12 {
+        bolt12
     } else {
-        list_invoice.bolt12.as_ref().unwrap()
+        return not_invoice_err;
     };
     let invoice_decoded = rpc
         .call_typed(&DecodeRequest {
@@ -628,7 +653,7 @@ async fn make_lookup_response_from_listinvoices(
 
     Ok(nip47::LookupInvoiceResponse {
         transaction_type: Some(nip47::TransactionType::Incoming),
-        invoice: Some(invstring.to_owned()),
+        invoice: Some(invstring),
         description,
         description_hash,
         preimage,

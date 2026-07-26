@@ -22,15 +22,13 @@ use nostr::{
     Tag,
     Timestamp,
     event::FinalizeEventAsync,
-    key::{Keys, PublicKey, SecretKey},
     nips::{nip04, nip44, nip47},
 };
-use nostr_sdk::client::Client;
 
 use crate::{
     OPT_NOTIFICATIONS,
     hold::{InvoiceState, ListRequest, TrackRequest, list_request::Constraint},
-    structs::{NOT_INV_ERR, PluginState},
+    structs::{NOT_INV_ERR, PluginState, WalletService},
 };
 
 pub async fn payment_received_handler(
@@ -66,10 +64,14 @@ pub async fn payment_received_handler(
     let invoice = invoice_resp
         .first()
         .ok_or_else(|| anyhow!("invoice not found"))?;
-    let invstring = if invoice.bolt11.is_some() {
-        invoice.bolt11.as_ref().unwrap()
+    let invstring = if let Some(bolt11) = &invoice.bolt11 {
+        bolt11.clone()
+    } else if let Some(bolt12) = &invoice.bolt12 {
+        bolt12.clone()
     } else {
-        invoice.bolt12.as_ref().unwrap()
+        return Err(anyhow!(
+            "Listinvoices has neither returned bolt11 or bolt12 field"
+        ));
     };
 
     let invoice_decoded = rpc
@@ -83,8 +85,8 @@ pub async fn payment_received_handler(
 
     let clients = plugin.state().handles.lock().await;
 
-    for (client, client_pubkey, wallet_secret) in clients.values() {
-        send_notification(&notification, client, client_pubkey.clone(), wallet_secret).await?;
+    for wallet_service in clients.values() {
+        send_notification(&notification, wallet_service).await?;
     }
 
     Ok(())
@@ -92,7 +94,7 @@ pub async fn payment_received_handler(
 
 fn make_payment_received_from_listinvoices(
     invoice: &ListinvoicesInvoices,
-    invstring: &str,
+    invstring: String,
     invoice_decoded: DecodeResponse,
 ) -> Result<String, anyhow::Error> {
     let not_invoice_err = Err(anyhow!(NOT_INV_ERR.to_owned()));
@@ -160,7 +162,7 @@ fn make_payment_received_from_listinvoices(
         notification_type: nip47::NotificationType::PaymentReceived,
         notification: nip47::NotificationResult::PaymentReceived(nip47::PaymentNotification {
             transaction_type: Some(nip47::TransactionType::Incoming),
-            invoice: invstring.to_owned(),
+            invoice: invstring,
             description: description.clone(),
             description_hash: description_hash.clone(),
             preimage: preimage.clone(),
@@ -220,8 +222,8 @@ pub async fn payment_sent_handler(
 
     let clients = plugin.state().handles.lock().await;
 
-    for (client, client_pubkey, wallet_secret) in clients.values() {
-        send_notification(&notification, client, client_pubkey.clone(), wallet_secret).await?;
+    for wallet_service in clients.values() {
+        send_notification(&notification, wallet_service).await?;
     }
 
     Ok(())
@@ -342,18 +344,19 @@ async fn make_payment_sent_from_listpays(
 
 async fn send_notification(
     notification: &String,
-    client: &Client,
-    client_pubkey: PublicKey,
-    wallet_secret: &Keys,
+    wallet_service: &WalletService,
 ) -> Result<(), anyhow::Error> {
     log::debug!("NOTIFICATION: {notification}");
-    let content_encrypted_nip04 =
-        nip04::encrypt(wallet_secret.secret_key(), &client_pubkey, notification)?;
+    let content_encrypted_nip04 = nip04::encrypt(
+        wallet_service.wallet_secret.secret_key(),
+        &wallet_service.client_pubkey,
+        notification,
+    )?;
     let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
-        .tag(Tag::public_key(client_pubkey))
-        .finalize_async(wallet_secret)
+        .tag(Tag::public_key(wallet_service.client_pubkey))
+        .finalize_async(&wallet_service.wallet_secret)
         .await?;
-    let nip04_result = client.send_event(&event_nip04).await?;
+    let nip04_result = wallet_service.client.send_event(&event_nip04).await?;
     if nip04_result.success.is_empty() {
         log::warn!(
             "None of the relays accepted our nip04 notification: {}",
@@ -367,16 +370,16 @@ async fn send_notification(
     log::debug!("NIP04 NOTIFICATION SENT: {event_nip04:?}");
 
     let content_encrypted_nip44 = nip44::encrypt(
-        wallet_secret.secret_key(),
-        &client_pubkey,
+        wallet_service.wallet_secret.secret_key(),
+        &wallet_service.client_pubkey,
         notification,
         nip44::Version::V2,
     )?;
     let event_nip44 = EventBuilder::new(Kind::from_u16(23197), content_encrypted_nip44)
-        .tag(Tag::public_key(client_pubkey))
-        .finalize_async(wallet_secret)
+        .tag(Tag::public_key(wallet_service.client_pubkey))
+        .finalize_async(&wallet_service.wallet_secret)
         .await?;
-    let nip44_result = client.send_event(&event_nip44).await?;
+    let nip44_result = wallet_service.client.send_event(&event_nip44).await?;
     if nip44_result.success.is_empty() {
         log::warn!(
             "None of the relays accepted our nip44 notification: {}",
@@ -392,6 +395,7 @@ async fn send_notification(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn holdinvoice_accepted_handler(
     plugin: Plugin<PluginState>,
     payment_hash: Vec<u8>,
@@ -514,8 +518,8 @@ pub async fn holdinvoice_accepted_handler(
     };
     let notification = serde_json::to_string(&content).unwrap();
 
-    for (client, client_pubkey, wallet_secret) in clients.values() {
-        send_notification(&notification, client, client_pubkey.clone(), wallet_secret).await?;
+    for wallet_service in clients.values() {
+        send_notification(&notification, wallet_service).await?;
     }
     Ok(())
 }

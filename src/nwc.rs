@@ -38,11 +38,12 @@ use crate::{
     nwc_keysend::pay_keysend_response,
     nwc_lookups::{list_transactions_response, lookup_invoice_response},
     nwc_pay::pay_invoice_response,
-    structs::{NwcStore, PluginState},
+    structs::{NwcStore, PluginState, WalletService},
     tasks::budget_task,
     util::{build_capabilities, build_notifications_vec, is_read_only_nwc},
 };
 
+#[allow(clippy::too_many_lines)]
 pub async fn run_nwc(
     plugin: Plugin<PluginState>,
     label: String,
@@ -154,10 +155,12 @@ pub async fn run_nwc(
     });
 
     let mut locked_handles = plugin.state().handles.lock().await;
-    locked_handles.insert(
-        label.clone(),
-        (nostr_client, client_keys.public_key(), wallet_keys),
-    );
+    let wallet_service = WalletService {
+        client: nostr_client,
+        client_pubkey: client_keys.public_key(),
+        wallet_secret: wallet_keys,
+    };
+    locked_handles.insert(label.clone(), wallet_service);
     Ok(())
 }
 
@@ -208,8 +211,8 @@ pub async fn send_nwc_info_event(
 
 pub async fn stop_nwc(plugin: Plugin<PluginState>, label: &String) {
     let mut locked_handles = plugin.state().handles.lock().await;
-    if let Some((client, _client_pubkey, _wallet_secret)) = locked_handles.remove(label) {
-        client.shutdown().await;
+    if let Some(wallet_service) = locked_handles.remove(label) {
+        wallet_service.client.shutdown().await;
     }
 
     stop_nwc_budget_job(&plugin, label);
