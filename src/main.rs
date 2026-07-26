@@ -165,7 +165,7 @@ async fn shutdown_handler(
     _args: serde_json::Value,
 ) -> Result<(), anyhow::Error> {
     let mut locked_handles = plugin.state().handles.lock().await;
-    for (_x, (client, _client_pubkey)) in locked_handles.drain() {
+    for (_x, (client, _client_pubkey, _wallet_keys)) in locked_handles.drain() {
         client.shutdown().await;
     }
     std::process::exit(0)
