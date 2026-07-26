@@ -14,11 +14,12 @@ use nostr::{
     SecretKey,
     Tag,
     Timestamp,
+    event::FinalizeEventAsync,
     nips::{nip04, nip44, nip47},
-    signer::SignerError,
 };
 use nostr_sdk::{
-    client::{self, Client, ClientNotification, Error},
+    client::{self, Client, ClientNotification},
+    error::Error,
     relay::RelayStatus,
 };
 use tokio::{sync::oneshot, time};
@@ -49,13 +50,10 @@ pub async fn run_nwc(
 ) -> Result<(), Error> {
     let (method_capabilities, _) = build_capabilities(is_read_only_nwc(&nwc_store), &plugin);
 
-    let wallet_keys = Keys::new(
-        SecretKey::from_hex(&nwc_store.walletkey)
-            .map_err(|e| Error::Signer(SignerError::backend(e)))?,
-    );
-    let client_pubkey = Keys::new(nwc_store.uri.secret.clone()).public_key();
+    let wallet_keys = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
+    let client_keys = Keys::new(nwc_store.uri.secret.clone());
 
-    let nostr_client = Client::builder().signer(wallet_keys.clone()).build();
+    let nostr_client = Client::new();
 
     log::debug!("relay_count:{}", nwc_store.uri.relays.len());
 
@@ -71,6 +69,8 @@ pub async fn run_nwc(
     let nostr_client_clone = nostr_client.clone();
     let plugin_clone = plugin.clone();
     let label_clone = label.clone();
+    let client_keys_clone = client_keys.clone();
+    let wallet_keys_clone = wallet_keys.clone();
     tokio::spawn(async move {
         loop {
             nostr_client_clone
@@ -100,7 +100,7 @@ pub async fn run_nwc(
                 plugin_clone.clone(),
                 nostr_client_clone.clone(),
                 method_capabilities.clone(),
-                wallet_keys.clone(),
+                wallet_keys_clone.clone(),
             )
             .await
             {
@@ -112,7 +112,7 @@ pub async fn run_nwc(
 
             let filter = Filter::new()
                 .kind(Kind::WalletConnectRequest)
-                .author(client_pubkey)
+                .author(client_keys_clone.public_key())
                 .since(Timestamp::now() - STARTUP_DELAY - 1);
 
             let mut notifications = nostr_client_clone.notifications();
@@ -140,8 +140,8 @@ pub async fn run_nwc(
                     &nostr_client_clone,
                     &plugin_clone,
                     &label_clone,
-                    &wallet_keys,
-                    client_pubkey,
+                    &wallet_keys_clone,
+                    client_keys_clone.public_key(),
                 )
                 .await
                 {
@@ -156,7 +156,7 @@ pub async fn run_nwc(
     let mut locked_handles = plugin.state().handles.lock().await;
     locked_handles.insert(
         label.clone(),
-        (nostr_client, Keys::new(nwc_store.uri.secret).public_key()),
+        (nostr_client, client_keys.public_key(), wallet_keys),
     );
     Ok(())
 }
@@ -180,7 +180,7 @@ pub async fn send_nwc_info_event(
             .tag(Tag::parse(vec!["notifications", &notification_capabilities]).unwrap());
     }
 
-    let info_event = match info_event_builder.sign_with_keys(&wallet_keys) {
+    let info_event = match info_event_builder.finalize_async(&wallet_keys).await {
         Ok(o) => o,
         Err(e) => {
             return Err(anyhow!("Could not sign info_event! {e}"));
@@ -208,7 +208,7 @@ pub async fn send_nwc_info_event(
 
 pub async fn stop_nwc(plugin: Plugin<PluginState>, label: &String) {
     let mut locked_handles = plugin.state().handles.lock().await;
-    if let Some((client, _client_pubkey)) = locked_handles.remove(label) {
+    if let Some((client, _client_pubkey, _wallet_secret)) = locked_handles.remove(label) {
         client.shutdown().await;
     }
 
@@ -299,7 +299,7 @@ async fn nwc_request_handler(
             };
 
         let response_event =
-            match build_response_event(event.id, content, wallet_keys, client_pubkey, id) {
+            match build_response_event(event.id, content, wallet_keys, client_pubkey, id).await {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("Error signing reponse event! {e}");
@@ -427,7 +427,7 @@ fn encrypt_response_content(
     }
 }
 
-fn build_response_event(
+async fn build_response_event(
     event_id: EventId,
     content: String,
     wallet_keys: &Keys,
@@ -440,7 +440,7 @@ fn build_response_event(
     if let Some(i) = id {
         response_builder = response_builder.tag(Tag::identifier(i));
     }
-    match response_builder.sign_with_keys(wallet_keys) {
+    match response_builder.finalize_async(wallet_keys).await {
         Ok(o) => Ok(o),
         Err(e) => Err(e.into()),
     }

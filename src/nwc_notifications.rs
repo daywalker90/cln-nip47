@@ -16,7 +16,15 @@ use cln_rpc::{
     },
     primitives::Sha256,
 };
-use nostr::{EventBuilder, Kind, Tag, Timestamp, key::PublicKey, nips::nip47};
+use nostr::{
+    EventBuilder,
+    Kind,
+    Tag,
+    Timestamp,
+    event::FinalizeEventAsync,
+    key::{Keys, PublicKey, SecretKey},
+    nips::{nip04, nip44, nip47},
+};
 use nostr_sdk::client::Client;
 
 use crate::{
@@ -75,8 +83,8 @@ pub async fn payment_received_handler(
 
     let clients = plugin.state().handles.lock().await;
 
-    for (client, client_pubkey) in clients.values() {
-        send_notification(&notification, client, client_pubkey).await?;
+    for (client, client_pubkey, wallet_secret) in clients.values() {
+        send_notification(&notification, client, client_pubkey.clone(), wallet_secret).await?;
     }
 
     Ok(())
@@ -212,8 +220,8 @@ pub async fn payment_sent_handler(
 
     let clients = plugin.state().handles.lock().await;
 
-    for (client, client_pubkey) in clients.values() {
-        send_notification(&notification, client, client_pubkey).await?;
+    for (client, client_pubkey, wallet_secret) in clients.values() {
+        send_notification(&notification, client, client_pubkey.clone(), wallet_secret).await?;
     }
 
     Ok(())
@@ -335,14 +343,15 @@ async fn make_payment_sent_from_listpays(
 async fn send_notification(
     notification: &String,
     client: &Client,
-    client_pubkey: &PublicKey,
+    client_pubkey: PublicKey,
+    wallet_secret: &Keys,
 ) -> Result<(), anyhow::Error> {
-    let signer = client.signer().unwrap().clone();
     log::debug!("NOTIFICATION: {notification}");
-    let content_encrypted_nip04 = signer.nip04_encrypt(client_pubkey, notification).await?;
+    let content_encrypted_nip04 =
+        nip04::encrypt(wallet_secret.secret_key(), &client_pubkey, notification)?;
     let event_nip04 = EventBuilder::new(Kind::from_u16(23196), content_encrypted_nip04)
-        .tag(Tag::public_key(*client_pubkey))
-        .sign_async(&signer)
+        .tag(Tag::public_key(client_pubkey))
+        .finalize_async(wallet_secret)
         .await?;
     let nip04_result = client.send_event(&event_nip04).await?;
     if nip04_result.success.is_empty() {
@@ -357,10 +366,15 @@ async fn send_notification(
     }
     log::debug!("NIP04 NOTIFICATION SENT: {event_nip04:?}");
 
-    let content_encrypted_nip44 = signer.nip44_encrypt(client_pubkey, notification).await?;
+    let content_encrypted_nip44 = nip44::encrypt(
+        wallet_secret.secret_key(),
+        &client_pubkey,
+        notification,
+        nip44::Version::V2,
+    )?;
     let event_nip44 = EventBuilder::new(Kind::from_u16(23197), content_encrypted_nip44)
-        .tag(Tag::public_key(*client_pubkey))
-        .sign_async(&signer)
+        .tag(Tag::public_key(client_pubkey))
+        .finalize_async(wallet_secret)
         .await?;
     let nip44_result = client.send_event(&event_nip44).await?;
     if nip44_result.success.is_empty() {
@@ -500,8 +514,8 @@ pub async fn holdinvoice_accepted_handler(
     };
     let notification = serde_json::to_string(&content).unwrap();
 
-    for (client, client_pubkey) in clients.values() {
-        send_notification(&notification, client, client_pubkey).await?;
+    for (client, client_pubkey, wallet_secret) in clients.values() {
+        send_notification(&notification, client, client_pubkey.clone(), wallet_secret).await?;
     }
     Ok(())
 }

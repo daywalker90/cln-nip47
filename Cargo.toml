@@ -12,19 +12,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 tokio = { version = "1", features = ["fs", "sync", "rt-multi-thread"] }
-cln-rpc = "0.6"
+cln-rpc = "0.7"
 # cln-rpc = { path = "../lightning/cln-rpc/", version = "^0.6" }
-cln-plugin = "0.6"
+cln-plugin = "0.7"
 # cln-plugin = { path = "../lightning/plugins/", version = "^0.6" }
 parking_lot = "0.12"
 
-nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "6eb03213c7d3d9eaaa9b74c142f2b8eb79445af6" }
-nostr = { git = "https://github.com/rust-nostr/nostr.git", rev = "6eb03213c7d3d9eaaa9b74c142f2b8eb79445af6", features = [
-    "nip47",
-    "nip04",
-    "nip44",
-] }
-# nostr-sdk = { version = "0.44", features = ["nip47", "nip04", "nip44"] }
+# # nostr-sdk = { git = "https://github.com/rust-nostr/nostr.git", rev = "ff5be7d1416ea201887a02f648795010a3cbdf49" }
+# nostr = { git = "https://github.com/rust-nostr/nostr.git", rev = "ff5be7d1416ea201887a02f648795010a3cbdf49", features = [
+#     "nip47",
+#     "nip04",
+#     "nip44",
+# ] }
+nostr = { version = "0.45.0-alpha.4", features = ["nip47", "nip04", "nip44"] }
+nostr-sdk = { version = "0.45.0-alpha.4" }
 
 futures = "0.3"
 
@@ -44,6 +45,7 @@ tonic-prost = "0.14"
 
 [build-dependencies]
 tonic-prost-build = "0.14"
+protoc-bin-vendored = "3"
 
 
 [profile.optimized]
