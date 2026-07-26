@@ -1,43 +1,46 @@
+# ruff: noqa: DTZ005
+
+import asyncio
 import hashlib
 import inspect
 import json
 import logging
-import time
-import asyncio
 import secrets
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable, Union
+from typing import Any, Union
 
 import pytest
-from pyln.testing.fixtures import *  # noqa: F403
-from pyln.testing.utils import RpcError, wait_for, TIMEOUT
-from util import generate_random_label, get_plugin, get_hold  # noqa: F401
-
 from nostr_sdk import (
     Client,
-    RelayUrl,
+    Event,
     EventBuilder,
     Filter,
-    Event,
+    HandleNotification,
     Keys,
     KeysendTlvRecord,
     Kind,
-    HandleNotification,
     ListTransactionsRequest,
     LookupInvoiceRequest,
     MakeInvoiceRequest,
+    Method,
     NostrSdkError,
     NostrSigner,
     NostrWalletConnectUri,
     Nwc,
     PayInvoiceRequest,
     PayKeysendRequest,
+    PublicKey,
+    RelayUrl,
     Tag,
     TagKind,
-    Method,
-    PublicKey,
+    TransactionType,
 )
+from pyln.testing.fixtures import *
+from pyln.testing.utils import TIMEOUT, RpcError, wait_for
+from util import generate_random_label, get_hold, get_plugin  # noqa: F401
 
 LOGGER = logging.getLogger(__name__)
 
@@ -83,7 +86,7 @@ async def fetch_event_responses(
     handler = NotificationHandler(events, stop_after)
     task = asyncio.create_task(client.handle_notifications(handler))
 
-    time.sleep(1)
+    await asyncio.sleep(1)
     if inspect.iscoroutine(action):
         action_result = await action
     elif inspect.iscoroutinefunction(action):
@@ -123,7 +126,7 @@ async def fetch_info_event(
     while events.len() < 1 and (datetime.now() - start_time) < timedelta(
         seconds=TIMEOUT
     ):
-        time.sleep(1)
+        await asyncio.sleep(1)
         events = await client.fetch_events(
             response_filter, timeout=timedelta(seconds=1)
         )
@@ -135,7 +138,7 @@ async def fetch_info_event(
 @pytest.mark.asyncio
 async def test_get_balance(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
-    l1, l2 = node_factory.line_graph(
+    l1, _l2 = node_factory.line_graph(
         2,
         wait_for_announce=True,
         opts=[
@@ -237,7 +240,7 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
         },
     )
     l1.daemon.wait_for_log("All NWC's loaded")
-    time.sleep(5)
+    await asyncio.sleep(5)
     await client.connect()
     info_event = await fetch_info_event(client, uri)
     get_info = await nwc.get_info()
@@ -341,7 +344,7 @@ async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F81
         MakeInvoiceRequest(
             amount=3001,
             description="test2",
-            description_hash=hashlib.sha256("test2".encode()).hexdigest(),
+            description_hash=hashlib.sha256(b"test2").hexdigest(),
             expiry=120,
         )
     )
@@ -367,7 +370,7 @@ async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F81
             MakeInvoiceRequest(
                 amount=3001,
                 description=None,
-                description_hash=hashlib.sha256("test2".encode()).hexdigest(),
+                description_hash=hashlib.sha256(b"test2").hexdigest(),
                 expiry=120,
             )
         )
@@ -378,7 +381,7 @@ async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F81
             MakeInvoiceRequest(
                 amount=3001,
                 description="test1",
-                description_hash=hashlib.sha256("test2".encode()).hexdigest(),
+                description_hash=hashlib.sha256(b"test2").hexdigest(),
                 expiry=120,
             )
         )
@@ -562,7 +565,7 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
         MakeInvoiceRequest(
             amount=3001,
             description="test2",
-            description_hash=hashlib.sha256("test2".encode()).hexdigest(),
+            description_hash=hashlib.sha256(b"test2").hexdigest(),
             expiry=1000,
         )
     )
@@ -584,9 +587,7 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
     assert invoice_lookup.created_at.as_secs() == pytest.approx(
         invoice_decode["created_at"], abs=3
     )
-    assert (
-        invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
-    )
+    assert invoice_lookup.description_hash == hashlib.sha256(b"test2").hexdigest()
     assert invoice_lookup.expires_at.as_secs() == pytest.approx(
         listpays_rpc["expires_at"], abs=3
     )
@@ -613,9 +614,7 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
     assert invoice_lookup.created_at.as_secs() == pytest.approx(
         invoice_decode["created_at"], abs=3
     )
-    assert (
-        invoice_lookup.description_hash == hashlib.sha256("test2".encode()).hexdigest()
-    )
+    assert invoice_lookup.description_hash == hashlib.sha256(b"test2").hexdigest()
     assert invoice_lookup.expires_at.as_secs() == pytest.approx(
         listpays_rpc["expires_at"], abs=3
     )
@@ -693,9 +692,9 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
         ],
     )
     l1.rpc.call(
-        "pay",
+        "xpay",
         {
-            "bolt11": l2.rpc.call(
+            "invstring": l2.rpc.call(
                 "invoice",
                 {
                     "amount_msat": 500000000,
@@ -710,7 +709,7 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
             l2.rpc.call("listpeerchannels", [l1.info["id"]])["channels"][0][
                 "spendable_msat"
             ]
-            > 30001
+            > 400000000
         )
     )
     uri_str = l1.rpc.call("nip47-create", ["test1"])["uri"]
@@ -741,7 +740,7 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
                 amount=3000, description="test2", description_hash=None, expiry=None
             )
         )
-        result = l2.rpc.call("pay", [invoice.invoice])
+        result = l2.rpc.call("xpay", [invoice.invoice])
 
     invoice = await nwc.make_invoice(
         MakeInvoiceRequest(
@@ -762,19 +761,23 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
     )
     assert len(result) == 22
     for tx in result:
-        tx.description is not None
-        tx.invoice is not None
-        tx.amount is not None
-        tx.created_at is not None
-        tx.description_hash is None
-        tx.expires_at is None
-        tx.preimage is not None
-        tx.settled_at is not None
-        tx.metadata is None
-        tx.transaction_type is not None
-        tx.state is not None
-        tx.payment_hash is not None
-        tx.fees_paid is not None
+        assert tx.description is not None
+        assert tx.invoice is not None
+        assert tx.amount is not None
+        assert tx.created_at is not None
+        assert tx.description_hash is None
+        assert tx.preimage is not None
+        assert tx.settled_at is not None
+        assert tx.metadata is None
+        assert tx.transaction_type is not None
+        assert tx.state is not None
+        assert tx.payment_hash is not None
+        assert tx.fees_paid is not None
+
+        if tx.transaction_type == TransactionType.INCOMING:
+            assert tx.expires_at is not None
+        else:
+            assert tx.expires_at is None
 
 
 @pytest.mark.asyncio
@@ -927,7 +930,7 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
         },
     )
     l1.daemon.wait_for_log("All NWC's loaded")
-    time.sleep(3)
+    await asyncio.sleep(3)
     await client.connect()
     await fetch_info_event(client, uri)
 
@@ -940,7 +943,7 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
         },
     )
     with pytest.raises(AssertionError, match="0 == 1"):
-        (responses3, pay3) = await fetch_event_responses(
+        (_responses3, _pay3) = await fetch_event_responses(
             client,
             client_pubkey,
             23196,
@@ -1036,7 +1039,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
         },
     )
     l1.daemon.wait_for_log("All NWC's loaded")
-    time.sleep(3)
+    await asyncio.sleep(3)
     uri = NostrWalletConnectUri.parse(uri_str)
     signer = NostrSigner.keys(Keys(uri.secret()))
     client = Client(signer)
@@ -1066,7 +1069,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
         },
     )
     l1.daemon.wait_for_log("All NWC's loaded")
-    time.sleep(3)
+    await asyncio.sleep(3)
     await client.connect()
     await fetch_info_event(client, uri)
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
@@ -1107,7 +1110,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
             PayInvoiceRequest(id=None, amount=None, invoice=invoice_exceeded["bolt11"])
         )
 
-    time.sleep(11)
+    await asyncio.sleep(11)
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
     assert list["test1"]["budget_msat"] == 3000
@@ -1138,7 +1141,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
         },
     )
     l1.daemon.wait_for_log("All NWC's loaded")
-    time.sleep(3)
+    await asyncio.sleep(3)
     await client.connect()
     await fetch_info_event(client, uri)
 
@@ -1147,7 +1150,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
             PayInvoiceRequest(id=None, amount=None, invoice=invoice_exceeded["bolt11"])
         )
 
-    time.sleep(11)
+    await asyncio.sleep(11)
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
     assert list["test1"]["budget_msat"] == 3000
@@ -1242,7 +1245,7 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
         == "payment_received payment_sent"
     )
 
-    time.sleep(18)
+    await asyncio.sleep(18)
 
     balance = await nwc.get_balance()
     assert balance == 5000
@@ -1706,7 +1709,7 @@ async def test_hold_invoice(
 
     start_time = datetime.now()
     while (datetime.now() - start_time) < timedelta(seconds=10):
-        time.sleep(1)
+        await asyncio.sleep(1)
         try:
             await nwc.lookup_invoice(
                 LookupInvoiceRequest(
@@ -1757,7 +1760,7 @@ async def test_hold_invoice(
 
     start_time = datetime.now()
     while (datetime.now() - start_time) < timedelta(seconds=10):
-        time.sleep(1)
+        await asyncio.sleep(1)
         try:
             await nwc.lookup_invoice(
                 LookupInvoiceRequest(

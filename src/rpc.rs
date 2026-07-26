@@ -155,7 +155,7 @@ pub async fn nwc_budget(
             clients
                 .get(&label)
                 .ok_or_else(|| anyhow!("No client found for label: {label}"))?
-                .0
+                .client
                 .clone(),
             method_capabilities,
             wallet_keys,

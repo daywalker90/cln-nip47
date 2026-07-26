@@ -15,8 +15,7 @@ pub const NOT_INV_ERR: &str = "Not an invoice or invalid invoice";
 #[derive(Clone)]
 pub struct PluginState {
     pub config: Arc<Mutex<Config>>,
-    pub handles:
-        Arc<tokio::sync::Mutex<HashMap<String, (client::Client, nostr::PublicKey, nostr::Keys)>>>,
+    pub handles: Arc<tokio::sync::Mutex<HashMap<String, WalletService>>>,
     pub rpc_lock: Arc<tokio::sync::Mutex<ClnRpc>>,
     pub budget_jobs: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
     pub hold_client: Arc<Mutex<Option<HoldClient<Channel>>>>,
@@ -31,6 +30,12 @@ impl PluginState {
             hold_client: Arc::new(Mutex::new(None)),
         })
     }
+}
+
+pub struct WalletService {
+    pub client: client::Client,
+    pub client_pubkey: nostr::PublicKey,
+    pub wallet_secret: nostr::Keys,
 }
 
 #[derive(Clone, Debug)]

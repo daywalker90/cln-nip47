@@ -165,8 +165,8 @@ async fn shutdown_handler(
     _args: serde_json::Value,
 ) -> Result<(), anyhow::Error> {
     let mut locked_handles = plugin.state().handles.lock().await;
-    for (_x, (client, _client_pubkey, _wallet_keys)) in locked_handles.drain() {
-        client.shutdown().await;
+    for (_x, wallet_service) in locked_handles.drain() {
+        wallet_service.client.shutdown().await;
     }
     std::process::exit(0)
 }
@@ -299,6 +299,6 @@ fn do_certificates_exist(cert_dir: &Path) -> bool {
 
     required_files.iter().all(|file| {
         let path = cert_dir.join(file);
-        path.exists() && path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+        path.exists() && path.metadata().is_ok_and(|m| m.len() > 0)
     })
 }
