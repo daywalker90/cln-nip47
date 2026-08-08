@@ -18,7 +18,6 @@ from nostr_sdk import (
     Event,
     EventBuilder,
     Filter,
-    HandleNotification,
     Keys,
     KeysendTlvRecord,
     Kind,
@@ -28,14 +27,14 @@ from nostr_sdk import (
     Method,
     NostrSdkError,
     NostrSigner,
+    NostrWalletConnect,
     NostrWalletConnectUri,
-    Nwc,
     PayInvoiceRequest,
     PayKeysendRequest,
     PublicKey,
     RelayUrl,
+    ReqTarget,
     Tag,
-    TagKind,
     TransactionType,
 )
 from pyln.testing.fixtures import *
@@ -45,23 +44,7 @@ from util import generate_random_label, get_hold, get_plugin  # noqa: F401
 LOGGER = logging.getLogger(__name__)
 
 
-class NotificationHandler(HandleNotification):
-    def __init__(self, events_list, stop_after):
-        self.events_list = events_list
-        self.stop_after = stop_after
-        self._done = asyncio.Event()
-
-    async def handle(self, relay_url, subscription_id, event: Event):
-        LOGGER.info(f"Received new event from {relay_url}: {event.as_json()}")
-        self.events_list.append(event)
-        if len(self.events_list) >= self.stop_after:
-            self._done.set()
-
-    async def handle_msg(self, relay_url, msg):
-        _var = None
-
-
-Action = Union[
+Action = Union[  # noqa: UP007
     Callable[[], Awaitable[None]],
     Callable[[], None],
     Awaitable[None],
@@ -78,15 +61,31 @@ async def fetch_event_responses(
 ) -> tuple[list[Event], Any]:
     events = []
     response_filter = Filter().kind(Kind(event_kind)).pubkey(client_pubkey)
+    target = ReqTarget.auto([response_filter])
 
-    id = uuid.uuid4().hex
-    LOGGER.info(f"Subscribing with id {id} to {response_filter}")
-    await client.subscribe_with_id(id, response_filter)
+    subscription_id = uuid.uuid4().hex
+    LOGGER.info(f"Subscribing with id {subscription_id} to {response_filter}")
 
-    handler = NotificationHandler(events, stop_after)
-    task = asyncio.create_task(client.handle_notifications(handler))
+    await client.subscribe(target, subscription_id)
+
+    async def collect_events():
+        stream = client.notifications()
+
+        while len(events) < stop_after:
+            notification = await stream.next()
+
+            if notification.is_new_event():
+                event = notification.event
+                relay_url = notification.relay_url
+
+                LOGGER.info(f"Received new event from {relay_url}: {event.as_json()}")
+
+                events.append(event)
+
+    task = asyncio.create_task(collect_events())
 
     await asyncio.sleep(1)
+
     if inspect.iscoroutine(action):
         action_result = await action
     elif inspect.iscoroutinefunction(action):
@@ -97,10 +96,10 @@ async def fetch_event_responses(
         raise TypeError("action must be a callable or an awaitable")
 
     try:
-        await asyncio.wait_for(handler._done.wait(), timeout=timeout)
+        await asyncio.wait_for(task, timeout=timeout)
     except asyncio.TimeoutError:
         print(
-            f"Timeout reached after {timeout} seconds, collected {len(events)} events"
+            f"Timeout reached after {timeout} seconds, collected {len(events)} events",
         )
     finally:
         task.cancel()
@@ -109,9 +108,10 @@ async def fetch_event_responses(
         except asyncio.CancelledError:
             pass
 
-    await client.unsubscribe_all()
+        await client.unsubscribe_all()
+
     assert len(events) == stop_after
-    return (events, action_result)
+    return events, action_result
 
 
 async def fetch_info_event(
@@ -119,20 +119,17 @@ async def fetch_info_event(
     uri: NostrWalletConnectUri,
 ) -> Event:
     response_filter = Filter().kind(Kind(13194)).author(uri.public_key())
-    events = await client.fetch_events(
-        response_filter, timeout=timedelta(seconds=TIMEOUT)
-    )
+    target = ReqTarget.auto([response_filter])
+    events = await client.fetch_events(target, timeout=timedelta(seconds=TIMEOUT))
     start_time = datetime.now()
-    while events.len() < 1 and (datetime.now() - start_time) < timedelta(
+    while len(events) < 1 and (datetime.now() - start_time) < timedelta(
         seconds=TIMEOUT
     ):
         await asyncio.sleep(1)
-        events = await client.fetch_events(
-            response_filter, timeout=timedelta(seconds=1)
-        )
-    assert events.len() == 1
+        events = await client.fetch_events(target, timeout=timedelta(seconds=1))
+    assert len(events) == 1
 
-    return events.first()
+    return events[0]
 
 
 @pytest.mark.asyncio
@@ -155,38 +152,35 @@ async def test_get_balance(nostr_relay, node_factory, get_plugin):  # noqa: F811
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     balance = await nwc.get_balance()
-    assert balance == 3000
+    assert balance.balance == 3000
 
     uri_str = l1.rpc.call("nip47-create", ["test2"])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     balance = await nwc.get_balance()
-    assert balance == node_balance
+    assert balance.balance == node_balance
 
     uri_str = l1.rpc.call("nip47-create", ["test3", 0])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     balance = await nwc.get_balance()
-    assert balance == 0
+    assert balance.balance == 0
 
     with pytest.raises(RpcError, match="not an integer"):
         uri_str = l1.rpc.call("nip47-create", ["test3", -1])["uri"]
@@ -207,24 +201,23 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     get_info = await nwc.get_info()
     assert get_info.alias == node_get_info["alias"]
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
     assert get_info.methods == [
-        Method.MAKE_INVOICE,
-        Method.LOOKUP_INVOICE,
-        Method.LIST_TRANSACTIONS,
-        Method.GET_BALANCE,
-        Method.GET_INFO,
-        Method.PAY_INVOICE,
-        Method.PAY_KEYSEND,
+        Method.MAKE_INVOICE(),
+        Method.LOOKUP_INVOICE(),
+        Method.LIST_TRANSACTIONS(),
+        Method.GET_BALANCE(),
+        Method.GET_INFO(),
+        Method.PAY_INVOICE(),
+        Method.PAY_KEYSEND(),
     ]
     assert get_info.network == "regtest"
     assert get_info.notifications == ["payment_received", "payment_sent"]
@@ -248,13 +241,13 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
     assert get_info.block_height == node_get_info["blockheight"]
     assert get_info.color == node_get_info["color"]
     assert get_info.methods == [
-        Method.MAKE_INVOICE,
-        Method.LOOKUP_INVOICE,
-        Method.LIST_TRANSACTIONS,
-        Method.GET_BALANCE,
-        Method.GET_INFO,
-        Method.PAY_INVOICE,
-        Method.PAY_KEYSEND,
+        Method.MAKE_INVOICE(),
+        Method.LOOKUP_INVOICE(),
+        Method.LIST_TRANSACTIONS(),
+        Method.GET_BALANCE(),
+        Method.GET_INFO(),
+        Method.PAY_INVOICE(),
+        Method.PAY_KEYSEND(),
     ]
     assert get_info.network == "regtest"
     assert get_info.notifications == []
@@ -264,28 +257,27 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
         info_event.content()
         == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice pay_keysend"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
-        == "nip44_v2 nip04"
+    encryption_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "encryption"
     )
-    assert info_event.tags().find(TagKind.UNKNOWN("notifications")) is None
+    assert encryption_tag.content() == "nip44_v2 nip04"
+    assert not any(tag.kind() == "notifications" for tag in info_event.tags())
 
     uri_str = l1.rpc.call("nip47-create", ["test2", 0])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     get_info = await nwc.get_info()
     assert get_info.methods == [
-        Method.MAKE_INVOICE,
-        Method.LOOKUP_INVOICE,
-        Method.LIST_TRANSACTIONS,
-        Method.GET_BALANCE,
-        Method.GET_INFO,
+        Method.MAKE_INVOICE(),
+        Method.LOOKUP_INVOICE(),
+        Method.LIST_TRANSACTIONS(),
+        Method.GET_BALANCE(),
+        Method.GET_INFO(),
     ]
 
     info_event = await fetch_info_event(client, uri)
@@ -293,11 +285,11 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
         info_event.content()
         == "make_invoice lookup_invoice list_transactions get_balance get_info"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
-        == "nip44_v2 nip04"
+    encryption_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "encryption"
     )
-    assert info_event.tags().find(TagKind.UNKNOWN("notifications")) is None
+    assert encryption_tag.content() == "nip44_v2 nip04"
+    assert not any(tag.kind() == "notifications" for tag in info_event.tags())
 
 
 @pytest.mark.asyncio
@@ -314,12 +306,11 @@ async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F81
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     timestamp = int(time.time())
     invoice = await nwc.make_invoice(
         MakeInvoiceRequest(
@@ -407,12 +398,11 @@ async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     result = await nwc.pay_keysend(
         PayKeysendRequest(
             id="id123", amount=1000, pubkey=l3.info["id"], preimage=None, tlv_records=[]
@@ -488,12 +478,11 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     invoice = await nwc.make_invoice(
         MakeInvoiceRequest(
             amount=3000, description="test1", description_hash=None, expiry=None
@@ -715,12 +704,11 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
     uri_str = l1.rpc.call("nip47-create", ["test1"])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     for i in range(10):
         invoice = l2.rpc.call(
             "invoice",
@@ -803,12 +791,12 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
     LOGGER.info(uri_str)
 
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    keys = Keys(uri.secret())
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
 
     invoice = l3.rpc.call(
         "invoice",
@@ -870,11 +858,10 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
     responses = responses1 + responses2
     LOGGER.info(f"response1: {responses1} response2: {responses2}")
     assert len(responses) == 2
-    signer = NostrSigner.keys(Keys(uri.secret()))
     received_events = []
     sent_events = []
     for event in responses:
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if content["notification_type"] == "payment_received":
@@ -973,8 +960,7 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
     )
     uri_str = l1.rpc.call("nip47-create", ["test1", 3001])["uri"]
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
@@ -983,7 +969,7 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
         "invoice",
         {"label": generate_random_label(), "description": "test1", "amount_msat": 3000},
     )
-    nwc = Nwc(NostrWalletConnectUri.parse(uri_str))
+    nwc = NostrWalletConnect(NostrWalletConnectUri.parse(uri_str))
     result = await nwc.pay_invoice(
         PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
     )
@@ -1041,12 +1027,11 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     l1.daemon.wait_for_log("All NWC's loaded")
     await asyncio.sleep(3)
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     result = await nwc.pay_invoice(
         PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
     )
@@ -1082,12 +1067,11 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
 
     uri_str = l1.rpc.call("nip47-create", ["test1", 3000, "10sec"])["uri"]
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
 
     invoice = l2.rpc.call(
         "invoice",
@@ -1179,14 +1163,13 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
         {"label": generate_random_label(), "description": "test1", "amount_msat": 5000},
     )
     uri = NostrWalletConnectUri.parse(uri_str)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    client = Client(signer)
+    client = Client()
     await client.add_relay(RelayUrl.parse(url))
     await client.connect()
     await fetch_info_event(client, uri)
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
     balance = await nwc.get_balance()
-    assert balance == 3000
+    assert balance.balance == 3000
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -1195,7 +1178,7 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
 
     l1.rpc.call("nip47-budget", ["test1", 4000])
     balance = await nwc.get_balance()
-    assert balance == 4000
+    assert balance.balance == 4000
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -1204,7 +1187,7 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
 
     l1.rpc.call("nip47-budget", ["test1", 5000, "15s"])
     balance = await nwc.get_balance()
-    assert balance == 5000
+    assert balance.balance == 5000
 
     with pytest.raises(
         RpcError, match="`budget_msat` must be greater than 0 if you use `interval`"
@@ -1217,17 +1200,17 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
     assert pay.preimage is not None
 
     balance = await nwc.get_balance()
-    assert balance == 0
+    assert balance.balance == 0
 
     get_info = await nwc.get_info()
     assert get_info.methods == [
-        Method.MAKE_INVOICE,
-        Method.LOOKUP_INVOICE,
-        Method.LIST_TRANSACTIONS,
-        Method.GET_BALANCE,
-        Method.GET_INFO,
-        Method.PAY_INVOICE,
-        Method.PAY_KEYSEND,
+        Method.MAKE_INVOICE(),
+        Method.LOOKUP_INVOICE(),
+        Method.LIST_TRANSACTIONS(),
+        Method.GET_BALANCE(),
+        Method.GET_INFO(),
+        Method.PAY_INVOICE(),
+        Method.PAY_KEYSEND(),
     ]
 
     info_event = await fetch_info_event(client, uri)
@@ -1236,31 +1219,31 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
         info_event.content()
         == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice pay_keysend notifications"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
-        == "nip44_v2 nip04"
+    encryption_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "encryption"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("notifications")).content()
-        == "payment_received payment_sent"
+    assert encryption_tag.content() == "nip44_v2 nip04"
+    notification_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "notifications"
     )
+    assert notification_tag.content() == "payment_received payment_sent"
 
     await asyncio.sleep(18)
 
     balance = await nwc.get_balance()
-    assert balance == 5000
+    assert balance.balance == 5000
 
     l1.rpc.call("nip47-budget", ["test1", 0])
     balance = await nwc.get_balance()
-    assert balance == 0
+    assert balance.balance == 0
 
     get_info = await nwc.get_info()
     assert get_info.methods == [
-        Method.MAKE_INVOICE,
-        Method.LOOKUP_INVOICE,
-        Method.LIST_TRANSACTIONS,
-        Method.GET_BALANCE,
-        Method.GET_INFO,
+        Method.MAKE_INVOICE(),
+        Method.LOOKUP_INVOICE(),
+        Method.LIST_TRANSACTIONS(),
+        Method.GET_BALANCE(),
+        Method.GET_INFO(),
     ]
 
     info_event = await fetch_info_event(client, uri)
@@ -1268,14 +1251,14 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
         info_event.content()
         == "make_invoice lookup_invoice list_transactions get_balance get_info notifications"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
-        == "nip44_v2 nip04"
+    encryption_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "encryption"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("notifications")).content()
-        == "payment_received payment_sent"
+    assert encryption_tag.content() == "nip44_v2 nip04"
+    notification_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "notifications"
     )
+    assert notification_tag.content() == "payment_received payment_sent"
 
 
 @pytest.mark.asyncio
@@ -1311,7 +1294,7 @@ async def test_hold_invoice(
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
 
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
 
     preimage = secrets.token_hex(32)
     payment_hash = hashlib.sha256(bytes.fromhex(preimage)).hexdigest()
@@ -1325,14 +1308,14 @@ async def test_hold_invoice(
         },
     }
     content = json.dumps(content)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    keys = Keys(uri.secret())
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
     event = (
         await EventBuilder(Kind(23194), encrypted_content)
         .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
+        .finalize_async(keys)
     )
-    client = Client(signer)
+    client = Client()
     relay_url = RelayUrl.parse(url)
     await client.add_relay(relay_url)
     await client.connect()
@@ -1346,7 +1329,7 @@ async def test_hold_invoice(
     success_events = []
     for event in responses1:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if "result" in content and content["result"] is not None:
@@ -1403,7 +1386,7 @@ async def test_hold_invoice(
     hold_events = []
     for event in responses2:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if content["notification_type"] == "hold_invoice_accepted":
@@ -1427,7 +1410,7 @@ async def test_hold_invoice(
     assert lookup_hold.preimage is None
     assert lookup_hold.payment_hash == payment_hash
     assert lookup_hold.transaction_type.name == "INCOMING"
-    assert lookup_hold.state.name == "PENDING"  # TODO ACCEPTED STATE
+    assert lookup_hold.state.name == "ACCEPTED"
     assert lookup_hold.settled_at is None
 
     content = {
@@ -1437,11 +1420,11 @@ async def test_hold_invoice(
         },
     }
     content = json.dumps(content)
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
     event = (
         await EventBuilder(Kind(23194), encrypted_content)
         .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
+        .finalize_async(keys)
     )
 
     (responses3, _res) = await fetch_event_responses(
@@ -1451,7 +1434,7 @@ async def test_hold_invoice(
     success_events = []
     for event in responses3:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if (
@@ -1509,12 +1492,11 @@ async def test_hold_invoice(
         },
     }
     content = json.dumps(content)
-    signer = NostrSigner.keys(Keys(uri.secret()))
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
     event = (
         await EventBuilder(Kind(23194), encrypted_content)
         .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
+        .finalize_async(keys)
     )
 
     (responses4, _res) = await fetch_event_responses(
@@ -1524,7 +1506,7 @@ async def test_hold_invoice(
     success_events = []
     for event in responses4:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if (
@@ -1558,7 +1540,7 @@ async def test_hold_invoice(
     hold_events = []
     for event in responses5:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if (
@@ -1575,11 +1557,11 @@ async def test_hold_invoice(
         },
     }
     content = json.dumps(content)
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
     event = (
         await EventBuilder(Kind(23194), encrypted_content)
         .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
+        .finalize_async(keys)
     )
 
     (responses6, _res) = await fetch_event_responses(
@@ -1593,7 +1575,7 @@ async def test_hold_invoice(
     success_events = []
     for event in responses6:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if (
@@ -1639,7 +1621,7 @@ async def test_hold_invoice(
         )
     )
 
-    nwc = Nwc(uri)
+    nwc = NostrWalletConnect(uri)
 
     invoice_lookup1 = await nwc.lookup_invoice(
         LookupInvoiceRequest(
@@ -1699,11 +1681,11 @@ async def test_hold_invoice(
         },
     }
     content = json.dumps(content)
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
     event = (
         await EventBuilder(Kind(23194), encrypted_content)
         .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
+        .finalize_async(keys)
     )
     await client.send_event(event)
 
@@ -1718,7 +1700,8 @@ async def test_hold_invoice(
                 )
             )
             break
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            LOGGER.error(e)
             continue
 
     lookup_hold = await nwc.lookup_invoice(
@@ -1750,11 +1733,11 @@ async def test_hold_invoice(
         },
     }
     content = json.dumps(content)
-    encrypted_content = await signer.nip04_encrypt(uri.public_key(), content)
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
     event = (
         await EventBuilder(Kind(23194), encrypted_content)
         .tags([Tag.public_key(uri.public_key())])
-        .sign(signer)
+        .finalize_async(keys)
     )
     await client.send_event(event)
 
@@ -1769,7 +1752,8 @@ async def test_hold_invoice(
                 )
             )
             break
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            LOGGER.error(e)
             continue
 
     lookup_hold = await nwc.lookup_invoice(
@@ -1793,12 +1777,15 @@ async def test_hold_invoice(
         info_event.content()
         == "make_invoice lookup_invoice list_transactions get_balance get_info pay_invoice pay_keysend make_hold_invoice cancel_hold_invoice settle_hold_invoice notifications"
     )
-    assert (
-        info_event.tags().find(TagKind.UNKNOWN("encryption")).content()
-        == "nip44_v2 nip04"
+    encryption_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "encryption"
+    )
+    assert encryption_tag.content() == "nip44_v2 nip04"
+    notification_tag = next(
+        tag for tag in info_event.tags() if tag.kind() == "notifications"
     )
     assert (
-        info_event.tags().find(TagKind.UNKNOWN("notifications")).content()
+        notification_tag.content()
         == "payment_received payment_sent hold_invoice_accepted"
     )
 
@@ -1816,7 +1803,7 @@ async def test_hold_invoice(
     hold_events = []
     for event in responses7:
         LOGGER.info(event)
-        content = await signer.nip04_decrypt(uri.public_key(), event.content())
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
         content = json.loads(content)
         LOGGER.info(content)
         if (
