@@ -11,7 +11,6 @@ use nostr::nips::nip47::{self};
 use crate::{
     structs::{NwcStore, PluginState},
     util::{
-        at_or_above_version,
         budget_amount_check,
         get_budget_msat,
         load_nwc_store,
@@ -19,6 +18,8 @@ use crate::{
         update_nwc_store,
     },
 };
+
+pub const XKEYSEND_COMMAND: &str = "xkeysend";
 
 pub async fn pay_keysend_response(
     plugin: Plugin<PluginState>,
@@ -84,12 +85,7 @@ async fn pay_keysend(
         message: e.to_string(),
     })?;
 
-    let my_cln_version = plugin.state().config.lock().my_cln_version.clone();
-
-    if at_or_above_version(&my_cln_version, "26.06").map_err(|e| nip47::NIP47Error {
-        code: nip47::ErrorCode::Other,
-        message: e.to_string(),
-    })? {
+    if plugin.state().config.lock().has_xkeysend {
         xkeysend(&mut rpc, params, pubkey, nwc_store, label).await
     } else {
         keysend(&mut rpc, params, pubkey, nwc_store, label).await

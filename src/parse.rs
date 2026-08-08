@@ -1,12 +1,14 @@
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 use anyhow::anyhow;
 use cln_plugin::ConfiguredPlugin;
-use cln_rpc::{ClnRpc, model::requests::GetinfoRequest};
+use cln_rpc::{ClnRpc, model::requests::HelpRequest};
 use nostr::types::RelayUrl;
 
 use crate::{
     OPT_RELAYS,
+    nwc_keysend::XKEYSEND_COMMAND,
+    nwc_pay::XPAY_COMMAND,
     structs::{PluginState, TimeUnit},
 };
 
@@ -33,9 +35,34 @@ pub async fn read_startup_options(
         Path::new(&plugin.configuration().lightning_dir).join(&plugin.configuration().rpc_file),
     )
     .await?;
-    let version = rpc.call_typed(&GetinfoRequest {}).await?.version;
+    let help = rpc.call_typed(&HelpRequest { command: None }).await?;
+
     let mut config = state.config.lock();
-    config.my_cln_version = version;
+
+    let mut available_commands = HashSet::new();
+    for command in &help.help {
+        if let Some(method) = command.command.split_ascii_whitespace().next() {
+            available_commands.insert(method);
+        }
+    }
+
+    log::debug!(
+        "Found {} commands available: {}",
+        available_commands.len(),
+        available_commands
+            .iter()
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    config.has_xkeysend = available_commands.contains(XKEYSEND_COMMAND);
+    config.has_xpay = available_commands.contains(XPAY_COMMAND);
+    log::debug!(
+        "Using xpay:{} xkeysend:{}",
+        config.has_xpay,
+        config.has_xkeysend
+    );
     for relay in relays_str {
         log::debug!("RELAY:{relay}");
         config.relays.push(RelayUrl::parse(&relay)?);
