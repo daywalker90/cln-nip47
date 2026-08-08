@@ -1,4 +1,9 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+};
 
 use cln_rpc::ClnRpc;
 use nostr::{
@@ -44,13 +49,15 @@ pub struct WalletService {
 #[derive(Clone, Debug)]
 pub struct Config {
     pub relays: Vec<RelayUrl>,
-    pub my_cln_version: String,
+    pub has_xkeysend: bool,
+    pub has_xpay: bool,
 }
 impl Config {
     pub fn default() -> Config {
         Config {
             relays: Vec::new(),
-            my_cln_version: String::new(),
+            has_xkeysend: false,
+            has_xpay: false,
         }
     }
 }

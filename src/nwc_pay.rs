@@ -13,7 +13,6 @@ use nostr::nips::nip47;
 use crate::{
     structs::{NOT_INV_ERR, NwcStore, PluginState},
     util::{
-        at_or_above_version,
         budget_amount_check,
         get_budget_msat,
         load_nwc_store,
@@ -21,6 +20,8 @@ use crate::{
         update_nwc_store,
     },
 };
+
+pub const XPAY_COMMAND: &str = "xpay";
 
 pub async fn pay_invoice_response(
     plugin: Plugin<PluginState>,
@@ -63,10 +64,7 @@ async fn pay_invoice(
     let nwc_store =
         load_nwc_and_check_budget(&mut rpc, label, &params, invoice_amt_msat, &id).await?;
 
-    let my_version = plugin.state().config.lock().clone().my_cln_version;
-    let use_xpay = check_cln_version(&my_version, &id)?;
-
-    if use_xpay {
+    if plugin.state().config.lock().has_xpay {
         pay_with_xpay_full(&mut rpc, params, label, nwc_store, &id).await
     } else {
         pay_with_legacy_full(&mut rpc, params, label, nwc_store, &id).await
@@ -195,21 +193,6 @@ async fn load_nwc_and_check_budget(
     })?;
 
     Ok(nwc_store)
-}
-
-fn check_cln_version(
-    my_version: &str,
-    id: &str,
-) -> Result<bool, (nip47::NIP47Error, Option<String>)> {
-    at_or_above_version(my_version, "24.11").map_err(|e| {
-        (
-            nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            },
-            Some(id.to_owned()),
-        )
-    })
 }
 
 async fn update_budget_and_create_response(
