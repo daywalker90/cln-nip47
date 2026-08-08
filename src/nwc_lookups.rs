@@ -288,7 +288,12 @@ async fn get_and_decode_holdinvoice(
         let ph = match invoice_decoded.item_type {
             DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_payment_hash.unwrap(),
             DecodeType::BOLT11_INVOICE => invoice_decoded.payment_hash.unwrap().to_string(),
-            _ => todo!(),
+            _ => {
+                return Err(nip47::NIP47Error {
+                    code: nip47::ErrorCode::Other,
+                    message: "Not a supported invoice type".to_owned(),
+                });
+            }
         };
         let payment_hash_hash = match hex::decode(&ph) {
             Ok(p) => p,
