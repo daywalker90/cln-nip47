@@ -64,10 +64,9 @@ Release binaries for
 * x86_64-linux
 * armv7-linux (Raspberry Pi 32bit)
 * aarch64-linux (Raspberry Pi 64bit)
+* universal-apple-darwin (macOS)
 
 can be found on the [release](https://github.com/daywalker90/cln-nip47/releases) page. If you are unsure about your architecture you can run ``uname -m``.
-
-They require ``glibc>=2.31``, which you can check with ``ldd --version``.
 
 # Building
 You can build the plugin yourself instead of using the release binaries.
@@ -85,7 +84,7 @@ cargo build --release
 
 After that the binary will be here: ``target/release/cln-nip47``
 
-Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
+Note: Release binaries are built with the ``optimized`` profile.
 
 # Documentation
 
