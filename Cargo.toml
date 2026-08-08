@@ -24,8 +24,8 @@ parking_lot = "0.12"
 #     "nip04",
 #     "nip44",
 # ] }
-nostr = { version = "0.45.0-alpha.4", features = ["nip47", "nip04", "nip44"] }
-nostr-sdk = { version = "0.45.0-alpha.4" }
+nostr = { version = "0.45.1", features = ["nip47", "nip04", "nip44"] }
+nostr-sdk = { version = "0.45.1" }
 
 futures = "0.3"
 

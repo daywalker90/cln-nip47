@@ -1,8 +1,12 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
 use cln_rpc::ClnRpc;
-use nostr::{nips::nip47::NostrWalletConnectUri, types::RelayUrl};
-use nostr_sdk::client;
+use nostr::{
+    key::{Keys, PublicKey},
+    nips::nip47::NostrWalletConnectUri,
+    types::RelayUrl,
+};
+use nostr_sdk::client::Client;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
@@ -33,9 +37,9 @@ impl PluginState {
 }
 
 pub struct WalletService {
-    pub client: client::Client,
-    pub client_pubkey: nostr::PublicKey,
-    pub wallet_secret: nostr::Keys,
+    pub client: Client,
+    pub client_pubkey: PublicKey,
+    pub wallet_secret: Keys,
 }
 
 #[derive(Clone, Debug)]

@@ -4,18 +4,11 @@ use anyhow::anyhow;
 use cln_plugin::Plugin;
 use futures::StreamExt;
 use nostr::{
-    Event,
-    EventBuilder,
-    EventId,
-    Filter,
-    Keys,
-    Kind,
-    PublicKey,
-    SecretKey,
-    Tag,
-    Timestamp,
-    event::FinalizeEventAsync,
+    event::{Event, EventBuilder, EventId, FinalizeEventAsync, Kind, Tag},
+    filter::Filter,
+    key::{Keys, PublicKey, SecretKey},
     nips::{nip04, nip44, nip47},
+    types::Timestamp,
 };
 use nostr_sdk::{
     client::{self, Client, ClientNotification},

@@ -6,7 +6,11 @@ use cln_rpc::model::requests::{
     DeldatastoreRequest,
     ListdatastoreRequest,
 };
-use nostr::{Keys, SecretKey, Timestamp, nips::nip47::NostrWalletConnectUri};
+use nostr::{
+    key::{Keys, SecretKey},
+    nips::nip47::NostrWalletConnectUri,
+    types::Timestamp,
+};
 use serde_json::json;
 
 use crate::{

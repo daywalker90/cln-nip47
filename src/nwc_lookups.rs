@@ -16,7 +16,7 @@ use cln_rpc::{
     },
     primitives::Sha256,
 };
-use nostr::{Timestamp, nips::nip47};
+use nostr::{nips::nip47, types::Timestamp};
 use tonic::transport::Channel;
 
 use crate::{
