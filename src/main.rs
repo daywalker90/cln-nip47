@@ -285,11 +285,30 @@ async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::E
         .identity(identity)
         .domain_name("hold");
 
-    let hold_channel = Endpoint::from_shared(format!("https://{hold_grpc_host}:{hold_grpc_port}"))?
+    let endpoint = Endpoint::from_shared(format!("https://{hold_grpc_host}:{hold_grpc_port}"))?
         .tls_config(tls_config)?
         .keep_alive_while_idle(true)
-        .connect_lazy();
-    *plugin.state().hold_client.lock() = Some(HoldClient::new(hold_channel));
+        .connect_timeout(Duration::from_secs(5));
+
+    let max_retries = 20;
+
+    let channel = loop {
+        match endpoint.connect().await {
+            Ok(channel) => break channel,
+            Err(e) if retries < max_retries => {
+                retries += 1;
+
+                log::debug!("Hold gRPC server not ready, retrying ({retries}/{max_retries}): {e}");
+
+                time::sleep(Duration::from_millis(500)).await;
+            }
+            Err(e) => {
+                return Err(anyhow!("Hold gRPC server did not become ready: {e}"));
+            }
+        }
+    };
+
+    *plugin.state().hold_client.lock() = Some(HoldClient::new(channel));
 
     Ok(())
 }
