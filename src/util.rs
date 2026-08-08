@@ -1,13 +1,12 @@
 use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::{DatastoreMode, DatastoreRequest, ListdatastoreRequest},
     ClnRpc,
+    model::requests::{DatastoreMode, DatastoreRequest, ListdatastoreRequest},
 };
-use nostr::nips::nip47;
+use nostr::{nips::nip47, types::Timestamp};
 
 use crate::{
-    structs::{NwcStore, PluginState},
     OPT_NOTIFICATIONS,
     PLUGIN_NAME,
     WALLET_HOLD_METHODS,
@@ -15,6 +14,7 @@ use crate::{
     WALLET_NOTIFICATIONS,
     WALLET_PAY_METHODS,
     WALLET_READ_METHODS,
+    structs::{ID_STORE, NwcStore, PluginState},
 };
 
 pub fn budget_amount_check(
@@ -95,6 +95,23 @@ pub fn is_read_only_nwc(nwc_store: &NwcStore) -> bool {
         }
     }
     false
+}
+
+pub async fn save_event_id(
+    rpc: &mut ClnRpc,
+    id: String,
+    timestamp: Timestamp,
+) -> Result<(), anyhow::Error> {
+    rpc.call_typed(&DatastoreRequest {
+        key: vec![format!("{}-{}", PLUGIN_NAME, ID_STORE), id.clone()],
+        generation: None,
+        hex: None,
+        mode: Some(DatastoreMode::MUST_CREATE),
+        string: Some(timestamp.to_string()),
+    })
+    .await?;
+    log::debug!("stored event id:{id}");
+    Ok(())
 }
 
 pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, anyhow::Error> {

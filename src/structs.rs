@@ -15,6 +15,8 @@ use tonic::transport::Channel;
 use crate::hold::hold_client::HoldClient;
 
 pub const NOT_INV_ERR: &str = "Not an invoice or invalid invoice";
+pub const ID_STORE: &str = "eventids";
+pub const ID_MAX_AGE: u64 = 7_200;
 
 #[derive(Clone)]
 pub struct PluginState {

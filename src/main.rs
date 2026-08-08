@@ -157,6 +157,16 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
+    let plugin_clone_cleanup = plugin.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = tasks::cleanup_event_ids(plugin_clone_cleanup.clone()).await {
+                log::warn!("Error in cleanup_event_ids thread: {e}");
+            }
+            time::sleep(Duration::from_secs(10)).await;
+        }
+    });
+
     plugin.join().await
 }
 
