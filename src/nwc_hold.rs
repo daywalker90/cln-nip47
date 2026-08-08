@@ -2,10 +2,10 @@ use std::str::FromStr;
 
 use cln_plugin::Plugin;
 use cln_rpc::primitives::Sha256;
-use nostr::{nips::nip47, Timestamp};
+use nostr::{nips::nip47, types::Timestamp};
 
 use crate::{
-    hold::{invoice_request::Description, CancelRequest, InvoiceRequest, SettleRequest},
+    hold::{CancelRequest, InvoiceRequest, SettleRequest, invoice_request::Description},
     nwc_notifications::holdinvoice_accepted_handler,
     structs::PluginState,
 };
@@ -66,7 +66,7 @@ async fn make_hold_invoice(
                 return Err(nip47::NIP47Error {
                     code: nip47::ErrorCode::Other,
                     message: "Could not convert description hash to bytes".to_owned(),
-                })
+                });
             }
         };
         Some(Description::Hash(desc_hash_bytes))
@@ -83,7 +83,7 @@ async fn make_hold_invoice(
             return Err(nip47::NIP47Error {
                 code: nip47::ErrorCode::Other,
                 message: "Invalid payment hash".to_owned(),
-            })
+            });
         }
     };
 
@@ -164,7 +164,7 @@ async fn cancel_hold_invoice(
             return Err(nip47::NIP47Error {
                 code: nip47::ErrorCode::Other,
                 message: "Invalid payment hash".to_owned(),
-            })
+            });
         }
     };
 
@@ -222,7 +222,7 @@ async fn settle_hold_invoice(
             return Err(nip47::NIP47Error {
                 code: nip47::ErrorCode::Other,
                 message: "Invalid preimage".to_owned(),
-            })
+            });
         }
     };
 

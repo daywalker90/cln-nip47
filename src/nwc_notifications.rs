@@ -17,12 +17,9 @@ use cln_rpc::{
     primitives::Sha256,
 };
 use nostr::{
-    EventBuilder,
-    Kind,
-    Tag,
-    Timestamp,
-    event::FinalizeEventAsync,
+    event::{EventBuilder, FinalizeEventAsync, Kind, Tag},
     nips::{nip04, nip44, nip47},
+    types::Timestamp,
 };
 
 use crate::{
