@@ -31,9 +31,9 @@ use crate::{
     nwc_keysend::pay_keysend_response,
     nwc_lookups::{list_transactions_response, lookup_invoice_response},
     nwc_pay::pay_invoice_response,
-    structs::{NwcStore, PluginState, WalletService},
+    structs::{ID_MAX_AGE, NwcStore, PluginState, WalletService},
     tasks::budget_task,
-    util::{build_capabilities, build_notifications_vec, is_read_only_nwc},
+    util::{build_capabilities, build_notifications_vec, is_read_only_nwc, save_event_id},
 };
 
 #[allow(clippy::too_many_lines)]
@@ -225,6 +225,7 @@ pub fn stop_nwc_budget_job(plugin: &Plugin<PluginState>, label: &String) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn nwc_request_handler(
     notification: ClientNotification,
     nostr_client: &client::Client,
@@ -246,44 +247,73 @@ async fn nwc_request_handler(
         | ClientNotification::Shutdown => return Ok(()),
     };
 
-    if let Some(expi) = event.tags.expiration() {
-        if expi < Timestamp::now() {
-            return Ok(());
-        }
-    }
     log::debug!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
     let mut use_nip44 = check_nip44_support(&event);
 
     let request = decrypt_request(&event.content, wallet_keys, &client_pubkey, &mut use_nip44)?;
 
-    let responses = match request.params {
-        nip47::RequestParams::PayInvoice(pay_invoice_request) => {
-            pay_invoice_response(plugin.clone(), pay_invoice_request, label).await
+    let responses = if event.tags.expiration().is_some()
+        && event.tags.expiration().unwrap() < Timestamp::now()
+    {
+        vec![(
+            nip47::Response {
+                result_type: request.method,
+                error: Some(nip47::NIP47Error {
+                    code: nip47::ErrorCode::Other,
+                    message: "Event expired".to_owned(),
+                }),
+                result: None,
+            },
+            None,
+        )]
+    } else if event.created_at.as_secs() < (Timestamp::now().as_secs() - ID_MAX_AGE) {
+        vec![(
+            nip47::Response {
+                result_type: request.method,
+                error: Some(nip47::NIP47Error {
+                    code: nip47::ErrorCode::Other,
+                    message: "Event created too far in the past".to_owned(),
+                }),
+                result: None,
+            },
+            None,
+        )]
+    } else {
+        {
+            let mut rpc = plugin.state().rpc_lock.lock().await;
+            save_event_id(&mut rpc, event.id.to_hex(), event.created_at).await?;
         }
-        nip47::RequestParams::PayKeysend(pay_keysend_request) => {
-            pay_keysend_response(plugin.clone(), pay_keysend_request, label).await
-        }
-        nip47::RequestParams::MakeInvoice(make_invoice_request) => {
-            make_invoice_response(plugin.clone(), make_invoice_request).await
-        }
-        nip47::RequestParams::LookupInvoice(lookup_invoice_request) => {
-            lookup_invoice_response(plugin.clone(), lookup_invoice_request).await
-        }
-        nip47::RequestParams::ListTransactions(list_transactions_request) => {
-            list_transactions_response(plugin.clone(), list_transactions_request).await
-        }
-        nip47::RequestParams::GetBalance => get_balance_response(plugin.clone(), label).await,
-        nip47::RequestParams::GetInfo => get_info_response(plugin.clone(), label).await,
-        nip47::RequestParams::MakeHoldInvoice(make_hold_invoice_request) => {
-            make_hold_invoice_response(plugin.clone(), make_hold_invoice_request).await
-        }
-        nip47::RequestParams::CancelHoldInvoice(cancel_hold_invoice_request) => {
-            cancel_hold_invoice_response(plugin.clone(), cancel_hold_invoice_request).await
-        }
-        nip47::RequestParams::SettleHoldInvoice(settle_hold_invoice_request) => {
-            settle_hold_invoice_response(plugin.clone(), settle_hold_invoice_request).await
+
+        match request.params {
+            nip47::RequestParams::PayInvoice(pay_invoice_request) => {
+                pay_invoice_response(plugin.clone(), pay_invoice_request, label).await
+            }
+            nip47::RequestParams::PayKeysend(pay_keysend_request) => {
+                pay_keysend_response(plugin.clone(), pay_keysend_request, label).await
+            }
+            nip47::RequestParams::MakeInvoice(make_invoice_request) => {
+                make_invoice_response(plugin.clone(), make_invoice_request).await
+            }
+            nip47::RequestParams::LookupInvoice(lookup_invoice_request) => {
+                lookup_invoice_response(plugin.clone(), lookup_invoice_request).await
+            }
+            nip47::RequestParams::ListTransactions(list_transactions_request) => {
+                list_transactions_response(plugin.clone(), list_transactions_request).await
+            }
+            nip47::RequestParams::GetBalance => get_balance_response(plugin.clone(), label).await,
+            nip47::RequestParams::GetInfo => get_info_response(plugin.clone(), label).await,
+            nip47::RequestParams::MakeHoldInvoice(make_hold_invoice_request) => {
+                make_hold_invoice_response(plugin.clone(), make_hold_invoice_request).await
+            }
+            nip47::RequestParams::CancelHoldInvoice(cancel_hold_invoice_request) => {
+                cancel_hold_invoice_response(plugin.clone(), cancel_hold_invoice_request).await
+            }
+            nip47::RequestParams::SettleHoldInvoice(settle_hold_invoice_request) => {
+                settle_hold_invoice_response(plugin.clone(), settle_hold_invoice_request).await
+            }
         }
     };
+
     for (response, id) in responses {
         let content =
             match encrypt_response_content(&response, wallet_keys, &client_pubkey, use_nip44) {

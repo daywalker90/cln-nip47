@@ -26,7 +26,6 @@ from nostr_sdk import (
     MakeInvoiceRequest,
     Method,
     NostrSdkError,
-    NostrSigner,
     NostrWalletConnect,
     NostrWalletConnectUri,
     PayInvoiceRequest,
