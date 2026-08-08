@@ -10,7 +10,14 @@ use nostr::nips::nip47::{self};
 
 use crate::{
     structs::{NwcStore, PluginState},
-    util::{at_or_above_version, budget_amount_check, load_nwc_store, update_nwc_store},
+    util::{
+        at_or_above_version,
+        budget_amount_check,
+        get_budget_msat,
+        load_nwc_store,
+        update_budget_msat,
+        update_nwc_store,
+    },
 };
 
 pub async fn pay_keysend_response(
@@ -65,7 +72,7 @@ async fn pay_keysend(
             message: e.to_string(),
         })?;
 
-    budget_amount_check(Some(params.amount), None, nwc_store.budget_msat).map_err(|e| {
+    budget_amount_check(Some(params.amount), None, get_budget_msat(&nwc_store)).map_err(|e| {
         nip47::NIP47Error {
             code: nip47::ErrorCode::QuotaExceeded,
             message: e.to_string(),
@@ -120,8 +127,8 @@ async fn xkeysend(
         .await
     {
         Ok(o) => {
-            if let Some(ref mut bdg) = nwc_store.budget_msat {
-                *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
+            if nwc_store.budget_msat.is_some() {
+                update_budget_msat(&mut nwc_store, o.amount_sent_msat.msat());
                 update_nwc_store(rpc, label, nwc_store)
                     .await
                     .map_err(|e| nip47::NIP47Error {
@@ -200,8 +207,8 @@ async fn keysend(
         .await
     {
         Ok(o) => {
-            if let Some(ref mut bdg) = nwc_store.budget_msat {
-                *bdg = bdg.saturating_sub(o.amount_sent_msat.msat());
+            if nwc_store.budget_msat.is_some() {
+                update_budget_msat(&mut nwc_store, o.amount_sent_msat.msat());
                 update_nwc_store(rpc, label, nwc_store)
                     .await
                     .map_err(|e| nip47::NIP47Error {

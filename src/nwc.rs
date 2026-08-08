@@ -15,7 +15,7 @@ use nostr_sdk::{
     error::Error,
     relay::RelayStatus,
 };
-use tokio::{sync::oneshot, time};
+use tokio::time;
 
 use crate::{
     OPT_NOTIFICATIONS,
@@ -32,7 +32,6 @@ use crate::{
     nwc_lookups::{list_transactions_response, lookup_invoice_response},
     nwc_pay::pay_invoice_response,
     structs::{ID_MAX_AGE, NwcStore, PluginState, WalletService},
-    tasks::budget_task,
     util::{build_capabilities, build_notifications_vec, is_read_only_nwc, save_event_id},
 };
 
@@ -57,7 +56,7 @@ pub async fn run_nwc(
     }
 
     if nwc_store.interval_config.is_some() {
-        start_nwc_budget_job(&plugin, label.clone());
+        log::debug!("NWC {label} uses an interval budget");
     }
 
     let nostr_client_clone = nostr_client.clone();
@@ -206,22 +205,6 @@ pub async fn stop_nwc(plugin: Plugin<PluginState>, label: &String) {
     let mut locked_handles = plugin.state().handles.lock().await;
     if let Some(wallet_service) = locked_handles.remove(label) {
         wallet_service.client.shutdown().await;
-    }
-
-    stop_nwc_budget_job(&plugin, label);
-}
-
-pub fn start_nwc_budget_job(plugin: &Plugin<PluginState>, label: String) {
-    let (tx, rx) = oneshot::channel::<()>();
-    tokio::spawn(budget_task(rx, plugin.clone(), label.clone()));
-    plugin.state().budget_jobs.lock().insert(label, tx);
-}
-
-pub fn stop_nwc_budget_job(plugin: &Plugin<PluginState>, label: &String) {
-    let mut budget_jobs = plugin.state().budget_jobs.lock();
-    let job = budget_jobs.remove(label);
-    if let Some(j) = job {
-        let _ = j.send(());
     }
 }
 

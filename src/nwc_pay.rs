@@ -12,7 +12,14 @@ use nostr::nips::nip47;
 
 use crate::{
     structs::{NOT_INV_ERR, NwcStore, PluginState},
-    util::{at_or_above_version, budget_amount_check, load_nwc_store, update_nwc_store},
+    util::{
+        at_or_above_version,
+        budget_amount_check,
+        get_budget_msat,
+        load_nwc_store,
+        update_budget_msat,
+        update_nwc_store,
+    },
 };
 
 pub async fn pay_invoice_response(
@@ -172,17 +179,20 @@ async fn load_nwc_and_check_budget(
         )
     })?;
 
-    budget_amount_check(params.amount, Some(invoice_amt_msat), nwc_store.budget_msat).map_err(
-        |e| {
-            (
-                nip47::NIP47Error {
-                    code: nip47::ErrorCode::QuotaExceeded,
-                    message: e.to_string(),
-                },
-                Some(id.to_owned()),
-            )
-        },
-    )?;
+    budget_amount_check(
+        params.amount,
+        Some(invoice_amt_msat),
+        get_budget_msat(&nwc_store),
+    )
+    .map_err(|e| {
+        (
+            nip47::NIP47Error {
+                code: nip47::ErrorCode::QuotaExceeded,
+                message: e.to_string(),
+            },
+            Some(id.to_owned()),
+        )
+    })?;
 
     Ok(nwc_store)
 }
@@ -211,8 +221,8 @@ async fn update_budget_and_create_response(
     preimage: Secret,
     id: &str,
 ) -> Result<(nip47::PayInvoiceResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
-    if let Some(ref mut bdg) = nwc_store.budget_msat {
-        *bdg = bdg.saturating_sub(amount_sent_msat);
+    if nwc_store.budget_msat.is_some() {
+        update_budget_msat(nwc_store, amount_sent_msat);
         update_nwc_store(rpc, label, nwc_store.clone())
             .await
             .map_err(|e| {

@@ -2,7 +2,10 @@ use cln_plugin::Plugin;
 use cln_rpc::{model::requests::ListpeerchannelsRequest, primitives::ChannelState};
 use nostr::nips::nip47;
 
-use crate::{structs::PluginState, util::load_nwc_store};
+use crate::{
+    structs::PluginState,
+    util::{get_budget_msat, load_nwc_store},
+};
 
 pub async fn get_balance_response(
     plugin: Plugin<PluginState>,
@@ -40,7 +43,7 @@ async fn get_balance(
             message: e.to_string(),
         })?;
 
-    let balance = if let Some(bdgt_amt) = nwc_store.budget_msat {
+    let balance = if let Some(bdgt_amt) = get_budget_msat(&nwc_store) {
         bdgt_amt
     } else {
         let listpeerchannels = rpc

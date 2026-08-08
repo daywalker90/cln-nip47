@@ -17,6 +17,46 @@ use crate::{
     structs::{ID_STORE, NwcStore, PluginState},
 };
 
+pub fn get_budget_msat(nwc_store: &NwcStore) -> Option<u64> {
+    match nwc_store.budget_msat {
+        Some(b) => {
+            if let Some(conf) = &nwc_store.interval_config {
+                let now = Timestamp::now().as_secs();
+                let spend = if now.saturating_sub(conf.last_reset) >= conf.interval_secs {
+                    0
+                } else {
+                    conf.spend_since_last_reset
+                };
+                Some(conf.reset_budget_msat.saturating_sub(spend))
+            } else {
+                Some(b)
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn update_budget_msat(nwc_store: &mut NwcStore, amount_spent_msat: u64) {
+    if let Some(bdg) = nwc_store.budget_msat.as_mut() {
+        if let Some(conf) = nwc_store.interval_config.as_mut() {
+            let now = Timestamp::now().as_secs();
+            if now.saturating_sub(conf.last_reset) >= conf.interval_secs {
+                conf.last_reset = now;
+                conf.spend_since_last_reset = amount_spent_msat;
+            } else {
+                conf.spend_since_last_reset = conf
+                    .spend_since_last_reset
+                    .saturating_add(amount_spent_msat);
+            }
+            *bdg = conf
+                .reset_budget_msat
+                .saturating_sub(conf.spend_since_last_reset);
+        } else {
+            *bdg = bdg.saturating_sub(amount_spent_msat);
+        }
+    }
+}
+
 pub fn budget_amount_check(
     request_amt_msat: Option<u64>,
     invoice_amt_msat: Option<u64>,
@@ -223,4 +263,60 @@ fn test_budget_check() {
     assert!(budget_amount_check(None, Some(0), Some(0)).is_ok());
     assert!(budget_amount_check(Some(0), Some(0), Some(1)).is_ok());
     assert!(budget_amount_check(Some(0), Some(0), Some(0)).is_ok());
+}
+
+#[test]
+fn test_budget_interval_helpers() {
+    use crate::structs::BudgetIntervalConfig;
+
+    let now = Timestamp::now().as_secs();
+    let conf = BudgetIntervalConfig {
+        interval_secs: 10,
+        reset_budget_msat: 1000,
+        last_reset: now,
+        spend_since_last_reset: 0,
+    };
+    let mut store = NwcStore {
+        uri: nostr::nips::nip47::NostrWalletConnectUri::new(
+            nostr::key::Keys::generate().public_key(),
+            vec![],
+            nostr::key::Keys::generate().secret_key().clone(),
+            None,
+        ),
+        walletkey: "test".to_owned(),
+        budget_msat: Some(1000),
+        interval_config: Some(conf),
+    };
+
+    assert_eq!(get_budget_msat(&store), Some(1000));
+
+    update_budget_msat(&mut store, 300);
+    assert_eq!(
+        store
+            .interval_config
+            .as_ref()
+            .unwrap()
+            .spend_since_last_reset,
+        300
+    );
+    assert_eq!(get_budget_msat(&store), Some(700));
+
+    update_budget_msat(&mut store, 500);
+    assert_eq!(get_budget_msat(&store), Some(200));
+
+    store.interval_config.as_mut().unwrap().last_reset = now.saturating_sub(20);
+    let old_last_reset = store.interval_config.as_ref().unwrap().last_reset;
+    assert_eq!(get_budget_msat(&store), Some(1000));
+
+    update_budget_msat(&mut store, 400);
+    assert!(store.interval_config.as_ref().unwrap().last_reset > old_last_reset);
+    assert_eq!(
+        store
+            .interval_config
+            .as_ref()
+            .unwrap()
+            .spend_since_last_reset,
+        400
+    );
+    assert_eq!(get_budget_msat(&store), Some(600));
 }

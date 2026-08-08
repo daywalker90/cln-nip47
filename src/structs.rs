@@ -9,7 +9,6 @@ use nostr::{
 use nostr_sdk::client::Client;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
 use tonic::transport::Channel;
 
 use crate::hold::hold_client::HoldClient;
@@ -23,7 +22,6 @@ pub struct PluginState {
     pub config: Arc<Mutex<Config>>,
     pub handles: Arc<tokio::sync::Mutex<HashMap<String, WalletService>>>,
     pub rpc_lock: Arc<tokio::sync::Mutex<ClnRpc>>,
-    pub budget_jobs: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
     pub hold_client: Arc<Mutex<Option<HoldClient<Channel>>>>,
 }
 impl PluginState {
@@ -32,7 +30,6 @@ impl PluginState {
             config: Arc::new(Mutex::new(Config::default())),
             handles: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             rpc_lock: Arc::new(tokio::sync::Mutex::new(ClnRpc::new(path).await?)),
-            budget_jobs: Arc::new(Mutex::new(HashMap::new())),
             hold_client: Arc::new(Mutex::new(None)),
         })
     }
@@ -86,6 +83,7 @@ pub struct BudgetIntervalConfig {
     pub interval_secs: u64,
     pub reset_budget_msat: u64,
     pub last_reset: u64,
+    pub spend_since_last_reset: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

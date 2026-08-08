@@ -15,10 +15,16 @@ use serde_json::json;
 
 use crate::{
     PLUGIN_NAME,
-    nwc::{run_nwc, send_nwc_info_event, start_nwc_budget_job, stop_nwc, stop_nwc_budget_job},
+    nwc::{run_nwc, send_nwc_info_event, stop_nwc},
     parse::parse_time_period,
     structs::{BudgetIntervalConfig, NwcStore, PluginState},
-    util::{build_capabilities, is_read_only_nwc, load_nwc_store, update_nwc_store},
+    util::{
+        build_capabilities,
+        get_budget_msat,
+        is_read_only_nwc,
+        load_nwc_store,
+        update_nwc_store,
+    },
 };
 
 pub async fn nwc_create(
@@ -62,6 +68,7 @@ pub async fn nwc_create(
                 interval_secs: interval,
                 reset_budget_msat: bgt_msat,
                 last_reset: Timestamp::now().as_secs(),
+                spend_since_last_reset: 0,
             };
             result.insert("interval_config".to_owned(), serde_json::to_value(&conf)?);
             Some(conf)
@@ -119,8 +126,6 @@ pub async fn nwc_budget(
 
     let (label, budget_msat, interval_secs) = parse_full_args(args)?;
 
-    stop_nwc_budget_job(&plugin, &label);
-
     let mut nwc_store = load_nwc_store(&mut rpc, &label).await?;
 
     let is_old_nwc_read_only = is_read_only_nwc(&nwc_store);
@@ -132,6 +137,7 @@ pub async fn nwc_budget(
                 interval_secs: interval,
                 reset_budget_msat: budget,
                 last_reset: Timestamp::now().as_secs(),
+                spend_since_last_reset: 0,
             };
             nwc_store.interval_config = Some(interval_config.clone());
         } else {
@@ -145,10 +151,6 @@ pub async fn nwc_budget(
     let is_new_nwc_read_only = is_read_only_nwc(&nwc_store);
 
     update_nwc_store(&mut rpc, &label, nwc_store.clone()).await?;
-
-    if nwc_store.interval_config.is_some() {
-        start_nwc_budget_job(&plugin, label.clone());
-    }
 
     if is_old_nwc_read_only != is_new_nwc_read_only {
         let wallet_keys = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
@@ -181,7 +183,8 @@ pub async fn nwc_list(
     let mut nwcs = Vec::new();
 
     if let Some(lbl) = label {
-        let nwc_store = load_nwc_store(&mut rpc, &lbl).await?;
+        let mut nwc_store = load_nwc_store(&mut rpc, &lbl).await?;
+        nwc_store.budget_msat = get_budget_msat(&nwc_store);
         let wallet_key = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
         let client_key = Keys::new(nwc_store.uri.secret.clone());
         let mut nwc_json = json!(nwc_store);
@@ -206,7 +209,8 @@ pub async fn nwc_list(
 
         for datastore in all_stored_nwcs {
             let label = datastore.key.last().unwrap().to_owned();
-            let nwc_store = load_nwc_store(&mut rpc, &label).await?;
+            let mut nwc_store = load_nwc_store(&mut rpc, &label).await?;
+            nwc_store.budget_msat = get_budget_msat(&nwc_store);
             let wallet_key = Keys::new(SecretKey::from_hex(&nwc_store.walletkey)?);
             let client_key = Keys::new(nwc_store.uri.secret.clone());
             let mut nwc_json = json!(nwc_store);

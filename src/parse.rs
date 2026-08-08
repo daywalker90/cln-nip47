@@ -2,12 +2,12 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use cln_plugin::ConfiguredPlugin;
-use cln_rpc::{model::requests::GetinfoRequest, ClnRpc};
+use cln_rpc::{ClnRpc, model::requests::GetinfoRequest};
 use nostr::types::RelayUrl;
 
 use crate::{
-    structs::{PluginState, TimeUnit},
     OPT_RELAYS,
+    structs::{PluginState, TimeUnit},
 };
 
 pub async fn read_startup_options(
