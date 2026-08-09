@@ -4,7 +4,15 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     ClnRpc,
     model::{
-        requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest},
+        requests::{
+            DecodeRequest,
+            ListinvoicesIndex,
+            ListinvoicesRequest,
+            ListpaysRequest,
+            WaitIndexname,
+            WaitRequest,
+            WaitSubsystem,
+        },
         responses::{
             DecodeResponse,
             DecodeType,
@@ -22,7 +30,15 @@ use tonic::transport::Channel;
 use crate::{
     hold::{self, ListRequest, hold_client::HoldClient, list_request::Constraint},
     structs::{NOT_INV_ERR, PluginState},
+    util::rpc_socket_path,
 };
+
+#[allow(clippy::doc_markdown)]
+/// Hard bound on the number of transactions a single `list_transactions`
+/// request will fetch, decode and return (DoS protection).
+const MAX_TRANSACTIONS: usize = 500;
+/// Bound on the size of a `list_transactions` response in bytes.
+const RESPONSE_LIMIT_BYTES: usize = 127 * 1024;
 
 pub async fn lookup_invoice_response(
     plugin: Plugin<PluginState>,
@@ -367,7 +383,37 @@ async fn list_transactions(
     plugin: Plugin<PluginState>,
     params: nip47::ListTransactionsRequest,
 ) -> Result<Vec<nip47::LookupInvoiceResponse>, nip47::NIP47Error> {
-    let mut rpc = plugin.state().rpc_lock.lock().await;
+    if params.limit == Some(0) {
+        return Ok(Vec::new());
+    }
+
+    let mut rpc = ClnRpc::new(rpc_socket_path(&plugin))
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: format!("Could not connect to lightningd: {e}"),
+        })?;
+
+    let limit = usize::try_from(params.limit.unwrap_or(MAX_TRANSACTIONS as u64)).map_err(|e| {
+        nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: format!("32-bit usize limit exceeded: {e}"),
+        }
+    })?;
+    let offset = usize::try_from(params.offset.unwrap_or(0)).map_err(|e| nip47::NIP47Error {
+        code: nip47::ErrorCode::Internal,
+        message: format!("32-bit usize limit exceeded: {e}"),
+    })?;
+    let want = limit.saturating_add(offset);
+    // Enough candidates from each source to satisfy the requested window even
+    // if some get filtered out again by `from`/`until`/`unpaid`.
+    let per_source = want
+        .saturating_mul(2)
+        .saturating_add(16)
+        .min(MAX_TRANSACTIONS);
+    let from = params.from.map(|t| t.as_secs());
+    let until = params.until.map(|t| t.as_secs());
+    let unpaid = params.unpaid.unwrap_or(false);
 
     let (query_invoices, query_payments) = match params.transaction_type {
         Some(t) => match t {
@@ -377,70 +423,29 @@ async fn list_transactions(
         None => (true, true),
     };
 
-    let unpaid = params.unpaid.unwrap_or(false);
-
     let mut transactions: Vec<nip47::LookupInvoiceResponse> = Vec::new();
+
     if query_invoices {
-        let list_invoices = rpc
-            .call_typed(&ListinvoicesRequest {
-                index: None,
-                invstring: None,
-                label: None,
-                limit: None,
-                offer_id: None,
-                payment_hash: None,
-                start: None,
-            })
-            .await
-            .map_err(|e| nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            })?
-            .invoices;
+        let invoices = collect_invoices(&mut rpc, per_source, from, until, unpaid).await?;
+        transactions.extend(invoices);
 
-        for list_invoice in list_invoices {
-            if !unpaid && list_invoice.status == ListinvoicesInvoicesStatus::UNPAID {
-                continue;
-            }
-
-            match make_lookup_response_from_listinvoices(&mut rpc, list_invoice).await {
-                Ok(t) => transactions.push(t),
-                Err(_e) => (),
-            }
-        }
-
-        let holdinvoice_support = plugin.state().hold_client.lock().is_some();
-
-        if holdinvoice_support {
-            let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
-            list_holdinvoices_to_transactions(&mut hold_client, &mut rpc, &mut transactions)
-                .await?;
+        let hold_client = plugin.state().hold_client.lock().clone();
+        if let Some(mut hold_client) = hold_client {
+            list_holdinvoices_to_transactions(
+                &mut hold_client,
+                &mut rpc,
+                per_source,
+                from,
+                until,
+                &mut transactions,
+            )
+            .await?;
         }
     }
 
     if query_payments {
-        let list_pays = rpc
-            .call_typed(&ListpaysRequest {
-                bolt11: None,
-                index: None,
-                limit: None,
-                payment_hash: None,
-                start: None,
-                status: None,
-            })
-            .await
-            .map_err(|e| nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            })?
-            .pays;
-
-        for list_pay in list_pays {
-            match make_lookup_response_from_listpays(&mut rpc, list_pay).await {
-                Ok(t) => transactions.push(t),
-                Err(_e) => (),
-            }
-        }
+        let pays = collect_pays(&mut rpc, per_source, from, until).await?;
+        transactions.extend(pays);
     }
 
     transactions.sort_by_key(|t| Reverse(t.created_at));
@@ -463,14 +468,211 @@ async fn list_transactions(
         }
     }
 
-    transactions = trim_to_size(transactions, 127 * 1024);
+    transactions = trim_to_size(transactions, RESPONSE_LIMIT_BYTES);
 
     Ok(transactions)
+}
+
+async fn max_invoice_created_index(rpc: &mut ClnRpc) -> Result<Option<u64>, cln_rpc::RpcError> {
+    let current_index = rpc
+        .call_typed(&WaitRequest {
+            indexname: WaitIndexname::CREATED,
+            subsystem: WaitSubsystem::INVOICES,
+            nextvalue: 0,
+        })
+        .await?
+        .created
+        .ok_or_else(|| cln_rpc::RpcError {
+            code: Some(-32700),
+            message: "Missing created field in wait response".to_owned(),
+            data: None,
+        })?;
+
+    if current_index == 0 {
+        return Ok(None);
+    }
+    Ok(Some(current_index))
+}
+
+async fn first_invoice_created_index(rpc: &mut ClnRpc) -> Result<u64, cln_rpc::RpcError> {
+    let first_index = rpc
+        .call_typed(&ListinvoicesRequest {
+            label: None,
+            invstring: None,
+            payment_hash: None,
+            offer_id: None,
+            index: Some(ListinvoicesIndex::CREATED),
+            start: Some(0),
+            limit: Some(1),
+        })
+        .await?
+        .invoices
+        .first()
+        .map_or(0, |i| i.created_index);
+    Ok(first_index)
+}
+
+/// Collect up to `per_source` most recent paid/public invoices within
+/// `[from, until]` by paging backwards through `created_index`, decoding only
+/// what is needed. Bounded by `MAX_TRANSACTIONS` regardless of node history.
+async fn collect_invoices(
+    rpc: &mut ClnRpc,
+    per_source: usize,
+    from: Option<u64>,
+    until: Option<u64>,
+    unpaid: bool,
+) -> Result<Vec<nip47::LookupInvoiceResponse>, nip47::NIP47Error> {
+    const PAGE: u32 = 200;
+    const MAX_RAW_ROWS: usize = MAX_TRANSACTIONS * 8;
+
+    let Some(max_idx) = max_invoice_created_index(rpc)
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: e.to_string(),
+        })?
+    else {
+        return Ok(Vec::new());
+    };
+
+    let first_index = first_invoice_created_index(rpc)
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: e.to_string(),
+        })?;
+
+    let mut out = Vec::new();
+    let mut raw_seen = 0usize;
+    let mut start_excl = max_idx.saturating_add(1);
+
+    loop {
+        let page_start = start_excl.saturating_sub(u64::from(PAGE));
+        let rows = rpc
+            .call_typed(&ListinvoicesRequest {
+                index: Some(ListinvoicesIndex::CREATED),
+                invstring: None,
+                label: None,
+                limit: Some(PAGE),
+                offer_id: None,
+                payment_hash: None,
+                start: Some(page_start),
+            })
+            .await
+            .map_err(|e| nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: e.to_string(),
+            })?
+            .invoices;
+
+        // Process newest first within the page.
+        for row in rows.into_iter().rev() {
+            raw_seen += 1;
+            if raw_seen > MAX_RAW_ROWS {
+                return Ok(out);
+            }
+
+            if row.created_index >= start_excl {
+                continue;
+            }
+
+            if !unpaid && row.status == ListinvoicesInvoicesStatus::UNPAID {
+                continue;
+            }
+
+            match make_lookup_response_from_listinvoices(rpc, row).await {
+                Ok(tx) => {
+                    let created = tx.created_at.as_secs();
+                    if let Some(f) = from {
+                        // Newest first, so everything older is also out of range.
+                        if created < f {
+                            return Ok(out);
+                        }
+                    }
+                    if let Some(u) = until {
+                        if created > u {
+                            continue;
+                        }
+                    }
+                    out.push(tx);
+                    if out.len() >= per_source {
+                        return Ok(out);
+                    }
+                }
+                Err(_e) => (),
+            }
+        }
+
+        if page_start == 0 || page_start < first_index {
+            break;
+        }
+        start_excl = page_start;
+    }
+
+    Ok(out)
+}
+
+/// Collect up to `per_source` most recent payments within `[from, until]`,
+/// decoding only the kept subset. `listpays` returns `created_at` directly, so
+/// the whole payment history can be filtered before any decode.
+async fn collect_pays(
+    rpc: &mut ClnRpc,
+    per_source: usize,
+    from: Option<u64>,
+    until: Option<u64>,
+) -> Result<Vec<nip47::LookupInvoiceResponse>, nip47::NIP47Error> {
+    let pays = rpc
+        .call_typed(&ListpaysRequest {
+            bolt11: None,
+            index: None,
+            limit: None,
+            payment_hash: None,
+            start: None,
+            status: None,
+        })
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: e.to_string(),
+        })?
+        .pays;
+
+    // Newest first.
+    let mut pays = pays;
+    pays.sort_by_key(|p| Reverse((p.created_at, p.created_index.unwrap_or(0))));
+
+    let mut out = Vec::new();
+    for pay in pays {
+        if out.len() >= per_source {
+            break;
+        }
+        if let Some(u) = until {
+            if pay.created_at > u {
+                continue;
+            }
+        }
+        if let Some(f) = from {
+            // Newest first, so the rest are also out of range.
+            if pay.created_at < f {
+                break;
+            }
+        }
+
+        match make_lookup_response_from_listpays(rpc, pay).await {
+            Ok(tx) => out.push(tx),
+            Err(_e) => (),
+        }
+    }
+
+    Ok(out)
 }
 
 async fn list_holdinvoices_to_transactions(
     hold_client: &mut HoldClient<Channel>,
     rpc: &mut ClnRpc,
+    per_source: usize,
+    from: Option<u64>,
+    until: Option<u64>,
     transactions: &mut Vec<nip47::LookupInvoiceResponse>,
 ) -> Result<(), nip47::NIP47Error> {
     let lookup_request = ListRequest { constraint: None };
@@ -484,96 +686,134 @@ async fn list_holdinvoices_to_transactions(
         })?
         .into_inner();
 
-    for hold_invoice in hold_lookup.invoices {
-        let invoice_decoded = rpc
-            .call_typed(&DecodeRequest {
-                string: hold_invoice.invoice.clone(),
-            })
-            .await
-            .map_err(|e| nip47::NIP47Error {
-                code: nip47::ErrorCode::Internal,
-                message: e.to_string(),
-            })?;
+    // Decode only the most recent `per_source` hold invoices (newest first).
+    let mut hold_invoices = hold_lookup.invoices;
+    hold_invoices.sort_by_key(|inv| Reverse(inv.created_at));
 
-        let description = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
-            DecodeType::BOLT11_INVOICE => invoice_decoded.description,
-            _ => continue,
-        };
-        let description_hash = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => None,
-            DecodeType::BOLT11_INVOICE => invoice_decoded.description_hash.map(|h| h.to_string()),
-            _ => continue,
-        };
-
-        let created_at = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => {
-                Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
+    let mut kept = 0usize;
+    for hold_invoice in hold_invoices {
+        if kept >= per_source {
+            break;
+        }
+        if let Some(u) = until {
+            if hold_invoice.created_at > u {
+                continue;
             }
-            DecodeType::BOLT11_INVOICE => Timestamp::from_secs(invoice_decoded.created_at.unwrap()),
-            _ => continue,
-        };
-
-        let amount = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_amount_msat.unwrap().msat(),
-            DecodeType::BOLT11_INVOICE => {
-                if let Some(amt) = invoice_decoded.amount_msat {
-                    amt.msat()
-                } else {
-                    // amount: `any` but have to put a value...
-                    0
-                }
+        }
+        if let Some(f) = from {
+            // Newest first, so the rest are also out of range.
+            if hold_invoice.created_at < f {
+                break;
             }
-            _ => continue,
-        };
+        }
 
-        let expires_at = match invoice_decoded.item_type {
-            DecodeType::BOLT12_INVOICE => invoice_decoded
-                .invoice_relative_expiry
-                .map(|e_at| created_at + Timestamp::from_secs(u64::from(e_at))),
-            DecodeType::BOLT11_INVOICE => invoice_decoded
-                .expiry
-                .map(|e_at| created_at + Timestamp::from_secs(e_at)),
-            _ => continue,
-        };
-
-        let state = match hold_invoice.state() {
-            hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
-            hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
-            hold::InvoiceState::Paid => nip47::TransactionState::Settled,
-            hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
-        };
-
-        let settled_at = if hold_invoice.settled_at() != 0 {
-            Some(Timestamp::from_secs(hold_invoice.settled_at()))
-        } else {
-            None
-        };
-
-        let preimage = if hold_invoice.state() == hold::InvoiceState::Paid {
-            Some(hex::encode(hold_invoice.preimage()))
-        } else {
-            None
-        };
-
-        transactions.push(nip47::LookupInvoiceResponse {
-            transaction_type: Some(nip47::TransactionType::Incoming),
-            invoice: Some(hold_invoice.invoice.clone()),
-            description,
-            description_hash,
-            preimage,
-            payment_hash: hex::encode(hold_invoice.payment_hash),
-            amount,
-            fees_paid: 0,
-            created_at,
-            expires_at,
-            settled_at,
-            metadata: None,
-            state: Some(state),
-        });
+        match make_lookup_response_from_holdinvoice(rpc, &hold_invoice).await {
+            Ok(tx) => {
+                transactions.push(tx);
+                kept += 1;
+            }
+            Err(_e) => (),
+        }
     }
 
     Ok(())
+}
+
+async fn make_lookup_response_from_holdinvoice(
+    rpc: &mut ClnRpc,
+    hold_invoice: &hold::Invoice,
+) -> Result<nip47::LookupInvoiceResponse, nip47::NIP47Error> {
+    let not_invoice_err = Err(nip47::NIP47Error {
+        code: nip47::ErrorCode::Other,
+        message: NOT_INV_ERR.to_owned(),
+    });
+
+    let invoice_decoded = rpc
+        .call_typed(&DecodeRequest {
+            string: hold_invoice.invoice.clone(),
+        })
+        .await
+        .map_err(|e| nip47::NIP47Error {
+            code: nip47::ErrorCode::Internal,
+            message: e.to_string(),
+        })?;
+
+    let description = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => invoice_decoded.offer_description,
+        DecodeType::BOLT11_INVOICE => invoice_decoded.description,
+        _ => return not_invoice_err,
+    };
+    let description_hash = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => None,
+        DecodeType::BOLT11_INVOICE => invoice_decoded.description_hash.map(|h| h.to_string()),
+        _ => return not_invoice_err,
+    };
+
+    let created_at = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => {
+            Timestamp::from_secs(invoice_decoded.invoice_created_at.unwrap())
+        }
+        DecodeType::BOLT11_INVOICE => Timestamp::from_secs(invoice_decoded.created_at.unwrap()),
+        _ => return not_invoice_err,
+    };
+
+    let amount = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_amount_msat.unwrap().msat(),
+        DecodeType::BOLT11_INVOICE => {
+            if let Some(amt) = invoice_decoded.amount_msat {
+                amt.msat()
+            } else {
+                // amount: `any` but have to put a value...
+                0
+            }
+        }
+        _ => return not_invoice_err,
+    };
+
+    let expires_at = match invoice_decoded.item_type {
+        DecodeType::BOLT12_INVOICE => invoice_decoded
+            .invoice_relative_expiry
+            .map(|e_at| created_at + Timestamp::from_secs(u64::from(e_at))),
+        DecodeType::BOLT11_INVOICE => invoice_decoded
+            .expiry
+            .map(|e_at| created_at + Timestamp::from_secs(e_at)),
+        _ => return not_invoice_err,
+    };
+
+    let state = match hold_invoice.state() {
+        hold::InvoiceState::Unpaid => nip47::TransactionState::Pending,
+        hold::InvoiceState::Accepted => nip47::TransactionState::Accepted,
+        hold::InvoiceState::Paid => nip47::TransactionState::Settled,
+        hold::InvoiceState::Cancelled => nip47::TransactionState::Expired,
+    };
+
+    let settled_at = if hold_invoice.settled_at() != 0 {
+        Some(Timestamp::from_secs(hold_invoice.settled_at()))
+    } else {
+        None
+    };
+
+    let preimage = if hold_invoice.state() == hold::InvoiceState::Paid {
+        Some(hex::encode(hold_invoice.preimage()))
+    } else {
+        None
+    };
+
+    Ok(nip47::LookupInvoiceResponse {
+        transaction_type: Some(nip47::TransactionType::Incoming),
+        invoice: Some(hold_invoice.invoice.clone()),
+        description,
+        description_hash,
+        preimage,
+        payment_hash: hex::encode(hold_invoice.payment_hash.clone()),
+        amount,
+        fees_paid: 0,
+        created_at,
+        expires_at,
+        settled_at,
+        metadata: None,
+        state: Some(state),
+    })
 }
 
 async fn make_lookup_response_from_listinvoices(
@@ -779,30 +1019,36 @@ async fn make_lookup_response_from_listpays(
     })
 }
 
+/// Keep only the newest transactions that fit within `max_size` bytes.
+/// Transactions must be sorted newest first. Serializes each transaction only
+/// once and chunks the remaining (O(n), not O(n^2)).
 fn trim_to_size(
     mut transactions: Vec<nip47::LookupInvoiceResponse>,
     max_size: usize,
 ) -> Vec<nip47::LookupInvoiceResponse> {
-    let length_before = transactions.len();
-    while !transactions.is_empty() {
-        match serde_json::to_vec(&transactions) {
+    let mut total_size = 0usize;
+    let mut keep = 0usize;
+    for tx in &transactions {
+        match serde_json::to_vec(tx) {
             Ok(serialized) => {
-                if serialized.len() <= max_size {
-                    log::info!(
-                        "Trimmed {} transactions to stay under {}bytes",
-                        length_before - transactions.len(),
-                        max_size
-                    );
-                    return transactions;
+                total_size += serialized.len();
+                if total_size > max_size {
+                    break;
                 }
-                transactions.pop();
             }
             Err(e) => {
-                log::warn!("Failed to serialize transactions: {e}");
-                return transactions;
+                log::warn!("Failed to serialize transaction: {e}");
+                break;
             }
         }
+        keep += 1;
     }
 
-    Vec::new()
+    let trimmed = transactions.len() - keep;
+    if trimmed > 0 {
+        log::info!("Trimmed {trimmed} transactions to stay under {max_size} bytes");
+    }
+    transactions.truncate(keep);
+
+    transactions
 }
