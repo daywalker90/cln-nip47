@@ -63,7 +63,7 @@ const OPT_NOTIFICATIONS: DefaultBooleanConfigOption = ConfigOption::new_bool_wit
     "Enable/disable nip47-notifications. Default is `true`",
 );
 pub const PLUGIN_NAME: &str = "cln-nip47";
-pub const WALLET_READ_METHODS: [nip47::Method; 5] = [
+pub const WALLET_READ_OR_RECEIVE_METHODS: [nip47::Method; 5] = [
     nip47::Method::MakeInvoice,
     nip47::Method::LookupInvoice,
     nip47::Method::ListTransactions,
