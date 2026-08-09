@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.2.0] 2026-08-09
 
 ### Added
 - holdinvoice methods: ``make_hold_invoice``, ``cancel_hold_invoice``, ``settle_hold_invoice``
