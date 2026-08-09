@@ -200,6 +200,17 @@ async fn load_nwcs(plugin: Plugin<PluginState>, rpc: &mut ClnRpc) -> Result<(), 
             }
         }
 
+        // We don't keep track of inflight payments succeeding
+        // while the plugin is dynamically restarted
+        if nwc_store.reserved_msat != 0 {
+            log::warn!(
+                "Releasing {} msat leftover budget reservation for {label}",
+                nwc_store.reserved_msat
+            );
+            nwc_store.reserved_msat = 0;
+            update_nwc_store(rpc, label, nwc_store.clone()).await?;
+        }
+
         run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
     }
     Ok(())

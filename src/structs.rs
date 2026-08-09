@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
 use cln_rpc::ClnRpc;
 use nostr::{
@@ -90,6 +85,7 @@ pub struct BudgetIntervalConfig {
     pub interval_secs: u64,
     pub reset_budget_msat: u64,
     pub last_reset: u64,
+    #[serde(default)]
     pub spend_since_last_reset: u64,
 }
 
@@ -101,4 +97,6 @@ pub struct NwcStore {
     pub budget_msat: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_config: Option<BudgetIntervalConfig>,
+    #[serde(default)]
+    pub reserved_msat: u64,
 }

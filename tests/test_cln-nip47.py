@@ -394,7 +394,7 @@ async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
             {"log-level": "debug"},
         ],
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
+    uri_str = l1.rpc.call("nip47-create", ["test1", 8000])["uri"]
     LOGGER.info(uri_str)
     uri = NostrWalletConnectUri.parse(uri_str)
     client = Client()
@@ -416,7 +416,7 @@ async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
         await nwc.pay_keysend(
             PayKeysendRequest(
                 id="id123",
-                amount=2001,
+                amount=7500,
                 pubkey=l2.info["id"],
                 preimage=None,
                 tlv_records=[KeysendTlvRecord(tlv_type=1234, value="a5c7e3d9b")],
@@ -428,7 +428,7 @@ async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
         await nwc.pay_keysend(
             PayKeysendRequest(
                 id="id123",
-                amount=2001,
+                amount=7500,
                 pubkey=l2.info["id"],
                 preimage="or3ijro3ijroi",
                 tlv_records=[KeysendTlvRecord(tlv_type=1234, value="a5c7e3d9b")],
@@ -957,7 +957,7 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
             {"log-level": "debug"},
         ],
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3001])["uri"]
+    uri_str = l1.rpc.call("nip47-create", ["test1", 9000])["uri"]
     uri = NostrWalletConnectUri.parse(uri_str)
     client = Client()
     await client.add_relay(RelayUrl.parse(url))
@@ -985,7 +985,7 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
         )
     invoice = l2.rpc.call(
         "invoice",
-        {"label": generate_random_label(), "description": "test3", "amount_msat": 2},
+        {"label": generate_random_label(), "description": "test3", "amount_msat": 6500},
     )
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -1009,7 +1009,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
             {"log-level": "debug"},
         ],
     )
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3000])["uri"]
+    uri_str = l1.rpc.call("nip47-create", ["test1", 8000])["uri"]
     LOGGER.info(uri_str)
     invoice = l2.rpc.call(
         "invoice",
@@ -1038,7 +1038,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
 
     invoice = l2.rpc.call(
         "invoice",
-        {"label": generate_random_label(), "description": "test1", "amount_msat": 1},
+        {"label": generate_random_label(), "description": "test1", "amount_msat": 5500},
     )
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -1064,7 +1064,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     revoke = l1.rpc.call("nip47-revoke", ["test1"])
     assert revoke["revoked"] == "test1"
 
-    uri_str = l1.rpc.call("nip47-create", ["test1", 3000, "10sec"])["uri"]
+    uri_str = l1.rpc.call("nip47-create", ["test1", 8000, "10sec"])["uri"]
     uri = NostrWalletConnectUri.parse(uri_str)
     client = Client()
     await client.add_relay(RelayUrl.parse(url))
@@ -1078,7 +1078,11 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     )
     invoice_exceeded = l2.rpc.call(
         "invoice",
-        {"label": generate_random_label(), "description": "test1", "amount_msat": 3000},
+        {"label": generate_random_label(), "description": "test1", "amount_msat": 5500},
+    )
+    invoice_fee_exceeded = l2.rpc.call(
+        "invoice",
+        {"label": generate_random_label(), "description": "test1", "amount_msat": 1},
     )
     result = await nwc.pay_invoice(
         PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
@@ -1086,17 +1090,26 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     assert result.preimage is not None
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["test1"]["budget_msat"] == 0
+    assert list["test1"]["budget_msat"] == 5000
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
             PayInvoiceRequest(id=None, amount=None, invoice=invoice_exceeded["bolt11"])
         )
+    with pytest.raises(
+        NostrSdkError.Generic,
+        match="Payment and estimated fees exceed the available budget",
+    ):
+        await nwc.pay_invoice(
+            PayInvoiceRequest(
+                id=None, amount=None, invoice=invoice_fee_exceeded["bolt11"]
+            )
+        )
 
     await asyncio.sleep(11)
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["test1"]["budget_msat"] == 3000
+    assert list["test1"]["budget_msat"] == 8000
 
     invoice = l2.rpc.call(
         "invoice",
@@ -1108,7 +1121,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     assert result.preimage is not None
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["test1"]["budget_msat"] == 0
+    assert list["test1"]["budget_msat"] == 5000
 
     with pytest.raises(NostrSdkError.Generic, match="Payment exceeds budget"):
         await nwc.pay_invoice(
@@ -1136,7 +1149,7 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
     await asyncio.sleep(11)
 
     list = l1.rpc.call("nip47-list", ["test1"])[0]
-    assert list["test1"]["budget_msat"] == 3000
+    assert list["test1"]["budget_msat"] == 8000
 
 
 @pytest.mark.asyncio
@@ -1184,9 +1197,9 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
             PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
         )
 
-    l1.rpc.call("nip47-budget", ["test1", 5000, "15s"])
+    l1.rpc.call("nip47-budget", ["test1", 10000, "15s"])
     balance = await nwc.get_balance()
-    assert balance.balance == 5000
+    assert balance.balance == 10000
 
     with pytest.raises(
         RpcError, match="`budget_msat` must be greater than 0 if you use `interval`"
@@ -1199,7 +1212,7 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
     assert pay.preimage is not None
 
     balance = await nwc.get_balance()
-    assert balance.balance == 0
+    assert balance.balance == 5000
 
     get_info = await nwc.get_info()
     assert get_info.methods == [
@@ -1230,7 +1243,7 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
     await asyncio.sleep(18)
 
     balance = await nwc.get_balance()
-    assert balance.balance == 5000
+    assert balance.balance == 10000
 
     l1.rpc.call("nip47-budget", ["test1", 0])
     balance = await nwc.get_balance()

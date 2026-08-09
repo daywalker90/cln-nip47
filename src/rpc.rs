@@ -83,6 +83,7 @@ pub async fn nwc_create(
         walletkey: wallet_keys.secret_key().to_secret_hex(),
         budget_msat,
         interval_config,
+        reserved_msat: 0,
     };
 
     rpc.call_typed(&DatastoreRequest {

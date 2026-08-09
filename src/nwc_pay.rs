@@ -16,8 +16,11 @@ use crate::{
         budget_amount_check,
         get_budget_msat,
         load_nwc_store,
-        update_budget_msat,
-        update_nwc_store,
+        payment_fee_reserve_msat,
+        refund_budget,
+        reserve_budget,
+        rpc_socket_path,
+        settle_budget,
     },
 };
 
@@ -53,21 +56,92 @@ async fn pay_invoice(
     params: nip47::PayInvoiceRequest,
     label: &str,
 ) -> Result<(nip47::PayInvoiceResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
-    let mut rpc = plugin.state().rpc_lock.lock().await;
+    let (id, reservation) = {
+        let mut rpc = plugin.state().rpc_lock.lock().await;
 
-    let decoded_invoice = decode_and_validate_invoice(&mut rpc, &params).await?;
+        let decoded_invoice = decode_and_validate_invoice(&mut rpc, &params).await?;
 
-    let id = get_payment_id(&params, &decoded_invoice)?;
+        let id = get_payment_id(&params, &decoded_invoice)?;
 
-    let invoice_amt_msat = get_invoice_amount_msat(&decoded_invoice, &id)?;
+        let invoice_amt_msat = get_invoice_amount_msat(&decoded_invoice, &id)?;
 
-    let nwc_store =
-        load_nwc_and_check_budget(&mut rpc, label, &params, invoice_amt_msat, &id).await?;
+        let nwc_store =
+            load_nwc_and_check_budget(&mut rpc, label, &params, invoice_amt_msat, &id).await?;
 
-    if plugin.state().config.lock().has_xpay {
-        pay_with_xpay_full(&mut rpc, params, label, nwc_store, &id).await
+        // Reserve the invoice amount plus the worst case fee so that no
+        // combination of concurrent payments can exceed the budget and so that
+        // balance queries during the payment reflect the reserved amount.
+        if get_budget_msat(&nwc_store).unwrap_or(u64::MAX)
+            < invoice_amt_msat.saturating_add(payment_fee_reserve_msat(invoice_amt_msat))
+        {
+            return Err((
+                nip47::NIP47Error {
+                    code: nip47::ErrorCode::QuotaExceeded,
+                    message: "Payment and estimated fees exceed the available budget".to_owned(),
+                },
+                Some(id),
+            ));
+        }
+
+        let reservation = reserve_budget(&mut rpc, label, &nwc_store, invoice_amt_msat)
+            .await
+            .map_err(|e| {
+                (
+                    nip47::NIP47Error {
+                        code: nip47::ErrorCode::Internal,
+                        message: e.to_string(),
+                    },
+                    Some(id.clone()),
+                )
+            })?;
+
+        (id, reservation)
+    };
+
+    let has_xpay = plugin.state().config.lock().has_xpay;
+
+    let mut pay_rpc = ClnRpc::new(rpc_socket_path(&plugin)).await.map_err(|e| {
+        (
+            nip47::NIP47Error {
+                code: nip47::ErrorCode::Internal,
+                message: format!("Could not connect to lightningd: {e}"),
+            },
+            Some(id.clone()),
+        )
+    })?;
+
+    let pay_result = if has_xpay {
+        pay_with_xpay(&mut pay_rpc, &params).await
     } else {
-        pay_with_legacy_full(&mut rpc, params, label, nwc_store, &id).await
+        pay_with_legacy(&mut pay_rpc, &params).await
+    };
+
+    match pay_result {
+        Ok((amount_sent_msat, amount_msat, preimage)) => {
+            let mut rpc = plugin.state().rpc_lock.lock().await;
+            if let Err(e) = settle_budget(&mut rpc, label, reservation, amount_sent_msat).await {
+                log::error!("Error updating budget after successful payment: {e}");
+            }
+
+            let preimage_str = hex::encode(preimage.to_vec());
+            let fees_paid = amount_sent_msat.saturating_sub(amount_msat);
+            Ok((
+                nip47::PayInvoiceResponse {
+                    preimage: preimage_str,
+                    fees_paid: Some(fees_paid),
+                },
+                Some(id),
+            ))
+        }
+        Err(e) => {
+            let mut rpc = plugin.state().rpc_lock.lock().await;
+            if let Err(refund_err) = refund_budget(&mut rpc, label, reservation).await {
+                log::error!(
+                    "Error refunding budget reservation after failed payment: {refund_err}"
+                );
+            }
+            Err(map_cln_error_to_nip47(&e, &id, has_xpay))
+        }
     }
 }
 
@@ -195,41 +269,6 @@ async fn load_nwc_and_check_budget(
     Ok(nwc_store)
 }
 
-async fn update_budget_and_create_response(
-    rpc: &mut ClnRpc,
-    label: &str,
-    nwc_store: &mut NwcStore,
-    amount_sent_msat: u64,
-    amount_msat: u64,
-    preimage: Secret,
-    id: &str,
-) -> Result<(nip47::PayInvoiceResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
-    if nwc_store.budget_msat.is_some() {
-        update_budget_msat(nwc_store, amount_sent_msat);
-        update_nwc_store(rpc, label, nwc_store.clone())
-            .await
-            .map_err(|e| {
-                (
-                    nip47::NIP47Error {
-                        code: nip47::ErrorCode::Internal,
-                        message: e.to_string(),
-                    },
-                    Some(id.to_owned()),
-                )
-            })?;
-    }
-
-    let preimage_str = hex::encode(preimage.to_vec());
-    let fees_paid = amount_sent_msat - amount_msat;
-    Ok((
-        nip47::PayInvoiceResponse {
-            preimage: preimage_str,
-            fees_paid: Some(fees_paid),
-        },
-        Some(id.to_owned()),
-    ))
-}
-
 fn map_cln_error_to_nip47(
     e: &RpcError,
     id: &str,
@@ -292,14 +331,11 @@ fn map_cln_error_to_nip47(
     }
 }
 
-async fn pay_with_xpay_full(
-    rpc: &mut ClnRpc,
-    params: nip47::PayInvoiceRequest,
-    label: &str,
-    mut nwc_store: NwcStore,
-    id: &str,
-) -> Result<(nip47::PayInvoiceResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
-    let payment_result = rpc
+async fn pay_with_xpay(
+    pay_rpc: &mut ClnRpc,
+    params: &nip47::PayInvoiceRequest,
+) -> Result<(u64, u64, Secret), RpcError> {
+    let payment_result = pay_rpc
         .call_typed(&XpayRequest {
             amount_msat: params.amount.map(Amount::from_msat),
             maxdelay: None,
@@ -307,39 +343,26 @@ async fn pay_with_xpay_full(
             partial_msat: None,
             retry_for: None,
             layers: None,
-            invstring: params.invoice,
+            invstring: params.invoice.clone(),
             payer_note: None,
             dev_use_shadow: None,
             label: None,
             localinvreqid: None,
         })
-        .await
-        .map_err(|e| map_cln_error_to_nip47(&e, id, true))?;
+        .await?;
 
-    let amount_sent_msat = payment_result.amount_sent_msat.msat();
-    let amount_msat = payment_result.amount_msat.msat();
-    let preimage = payment_result.payment_preimage;
-
-    update_budget_and_create_response(
-        rpc,
-        label,
-        &mut nwc_store,
-        amount_sent_msat,
-        amount_msat,
-        preimage,
-        id,
-    )
-    .await
+    Ok((
+        payment_result.amount_sent_msat.msat(),
+        payment_result.amount_msat.msat(),
+        payment_result.payment_preimage,
+    ))
 }
 
-async fn pay_with_legacy_full(
-    rpc: &mut ClnRpc,
-    params: nip47::PayInvoiceRequest,
-    label: &str,
-    mut nwc_store: NwcStore,
-    id: &str,
-) -> Result<(nip47::PayInvoiceResponse, Option<String>), (nip47::NIP47Error, Option<String>)> {
-    let payment_result = rpc
+async fn pay_with_legacy(
+    pay_rpc: &mut ClnRpc,
+    params: &nip47::PayInvoiceRequest,
+) -> Result<(u64, u64, Secret), RpcError> {
+    let payment_result = pay_rpc
         .call_typed(&PayRequest {
             amount_msat: params.amount.map(Amount::from_msat),
             description: None,
@@ -353,23 +376,13 @@ async fn pay_with_legacy_full(
             retry_for: None,
             riskfactor: None,
             exclude: None,
-            bolt11: params.invoice,
+            bolt11: params.invoice.clone(),
         })
-        .await
-        .map_err(|e| map_cln_error_to_nip47(&e, id, false))?;
+        .await?;
 
-    let amount_sent_msat = payment_result.amount_sent_msat.msat();
-    let amount_msat = payment_result.amount_msat.msat();
-    let preimage = payment_result.payment_preimage;
-
-    update_budget_and_create_response(
-        rpc,
-        label,
-        &mut nwc_store,
-        amount_sent_msat,
-        amount_msat,
-        preimage,
-        id,
-    )
-    .await
+    Ok((
+        payment_result.amount_sent_msat.msat(),
+        payment_result.amount_msat.msat(),
+        payment_result.payment_preimage,
+    ))
 }
