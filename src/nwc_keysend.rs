@@ -199,7 +199,11 @@ async fn keysend(
     for tlv in &params.tlv_records {
         extratlvs.entries.push(TlvEntry {
             typ: tlv.tlv_type,
-            value: tlv.value.as_bytes().to_owned(),
+            value: hex::decode(&tlv.value).map_err(|e| RpcError {
+                code: Some(-32700),
+                message: format!("Could not decode tlv bytes: {e}"),
+                data: None,
+            })?,
         });
     }
     let extratlvs = if extratlvs.entries.is_empty() {
