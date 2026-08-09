@@ -984,6 +984,21 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
             PayInvoiceRequest(id=None, amount=None, invoice=invoice["bolt11"])
         )
 
+    invoice = l2.rpc.call(
+        "invoice",
+        {
+            "label": generate_random_label(),
+            "description": "test1",
+            "amount_msat": "any",
+        },
+    )
+    result = await nwc.pay_invoice(
+        PayInvoiceRequest(id=None, amount=2, invoice=invoice["bolt11"])
+    )
+    pay = l1.rpc.call("listpays", {"payment_hash": invoice["payment_hash"]})["pays"][0]
+    assert result.preimage == pay["preimage"]
+    assert pay["amount_msat"] == 2
+
 
 @pytest.mark.asyncio
 async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
