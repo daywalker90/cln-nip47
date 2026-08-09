@@ -77,11 +77,17 @@ pub async fn payment_received_handler(
         ));
     };
 
+    let payment_hash_str = hex::encode(invoice.payment_hash);
+
     let invoice_decoded = rpc
         .call_typed(&DecodeRequest {
             string: invstring.clone(),
         })
         .await?;
+
+    if !invoice_decoded.valid {
+        return Err(anyhow!("Invalid invoice decoded for {payment_hash_str}"));
+    }
 
     let notification =
         make_payment_received_from_listinvoices(invoice, invstring, invoice_decoded)?;
@@ -89,7 +95,13 @@ pub async fn payment_received_handler(
     let clients = plugin.state().handles.lock().await;
 
     for wallet_service in clients.values() {
-        send_notification(&notification, wallet_service).await?;
+        if let Err(e) = send_notification(&notification, wallet_service).await {
+            log::warn!(
+                "Failed sending payment_received notification for {payment_hash_str} \
+                to client {}: {e}",
+                wallet_service.client_pubkey
+            );
+        }
     }
 
     Ok(())
@@ -227,7 +239,13 @@ pub async fn payment_sent_handler(
     let clients = plugin.state().handles.lock().await;
 
     for wallet_service in clients.values() {
-        send_notification(&notification, wallet_service).await?;
+        if let Err(e) = send_notification(&notification, wallet_service).await {
+            log::warn!(
+                "Failed sending payment_sent notification for {payment_hash} to\
+            client {}: {e}",
+                wallet_service.client_pubkey
+            );
+        }
     }
 
     Ok(())
@@ -405,6 +423,8 @@ pub async fn holdinvoice_accepted_handler(
     payment_hash: Vec<u8>,
     expires_at: u64,
 ) -> Result<(), anyhow::Error> {
+    let payment_hash_str = hex::encode(&payment_hash);
+
     let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
 
     let track_request = TrackRequest {
@@ -425,10 +445,7 @@ pub async fn holdinvoice_accepted_handler(
     loop {
         match tokio::time::timeout_at(deadline, track_stream.message()).await {
             Err(_elapsed) => {
-                log::debug!(
-                    "Hold invoice {} expired before being accepted",
-                    hex::encode(&payment_hash)
-                );
+                log::debug!("Hold invoice {payment_hash_str} expired before being accepted");
                 break;
             }
             Ok(Err(e)) => return Err(e.into()),
@@ -450,10 +467,7 @@ pub async fn holdinvoice_accepted_handler(
     }
 
     if !accepted {
-        log::debug!(
-            "Hold invoice {} was not accepted, skipping notification",
-            hex::encode(&payment_hash)
-        );
+        log::debug!("Hold invoice {payment_hash_str} was not accepted, skipping notification");
         return Ok(());
     }
 
@@ -522,7 +536,7 @@ pub async fn holdinvoice_accepted_handler(
         .await?
         .channels;
 
-    let payment_hash_hash = Sha256::from_str(&hex::encode(payment_hash))?;
+    let payment_hash_hash = Sha256::from_str(&payment_hash_str)?;
 
     let mut lowest_htlc_expiry = 0;
 
@@ -562,7 +576,13 @@ pub async fn holdinvoice_accepted_handler(
     let notification = serde_json::to_string(&content).unwrap();
 
     for wallet_service in clients.values() {
-        send_notification(&notification, wallet_service).await?;
+        if let Err(e) = send_notification(&notification, wallet_service).await {
+            log::warn!(
+                "Failed sending hold_invoice_accepted {payment_hash_str} notification\
+                to client {}: {e}",
+                wallet_service.client_pubkey
+            );
+        }
     }
     Ok(())
 }
