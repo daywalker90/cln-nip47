@@ -28,6 +28,11 @@ use crate::{
     structs::{NOT_INV_ERR, PluginState, WalletService},
 };
 
+/// Upper bound on how long a `holdinvoice_accepted_handler` waits for an
+/// invoice to be accepted, so a client cannot pin a task and a gRPC stream
+/// open forever with an absurd expiry.
+const MAX_HOLD_WAIT_SECS: u64 = 24 * 60 * 60;
+
 pub async fn payment_received_handler(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
@@ -396,6 +401,7 @@ async fn send_notification(
 pub async fn holdinvoice_accepted_handler(
     plugin: Plugin<PluginState>,
     payment_hash: Vec<u8>,
+    expires_at: u64,
 ) -> Result<(), anyhow::Error> {
     let mut hold_client = plugin.state().hold_client.lock().clone().unwrap();
 
@@ -404,11 +410,49 @@ pub async fn holdinvoice_accepted_handler(
     };
     let mut track_stream = hold_client.track(track_request).await?.into_inner();
 
-    while let Some(response) = track_stream.message().await? {
-        log::debug!("Invoice status: {}", response.state().as_str_name());
-        if response.state() == InvoiceState::Accepted {
-            break;
+    // The hold plugin has no expired state: an invoice that expires without
+    // being accepted stays in the Unpaid state and the track stream never ends
+    // on its own. Bound the wait by the invoice's expiry (capped) so we do not
+    // hold this task and gRPC stream open forever.
+    let wait_duration = expires_at
+        .saturating_sub(Timestamp::now().as_secs())
+        .min(MAX_HOLD_WAIT_SECS);
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(wait_duration);
+
+    let mut accepted = false;
+    loop {
+        match tokio::time::timeout_at(deadline, track_stream.message()).await {
+            Err(_elapsed) => {
+                log::debug!(
+                    "Hold invoice {} expired before being accepted",
+                    hex::encode(&payment_hash)
+                );
+                break;
+            }
+            Ok(Err(e)) => return Err(e.into()),
+            // The stream ended without an Accepted state: the invoice was
+            // cancelled before it ever got accepted.
+            Ok(Ok(None)) => break,
+            Ok(Ok(Some(response))) => {
+                log::debug!("Invoice status: {}", response.state().as_str_name());
+                match response.state() {
+                    InvoiceState::Accepted => {
+                        accepted = true;
+                        break;
+                    }
+                    InvoiceState::Paid | InvoiceState::Cancelled => break,
+                    InvoiceState::Unpaid => (),
+                }
+            }
         }
+    }
+
+    if !accepted {
+        log::debug!(
+            "Hold invoice {} was not accepted, skipping notification",
+            hex::encode(&payment_hash)
+        );
+        return Ok(());
     }
 
     let list_request = ListRequest {

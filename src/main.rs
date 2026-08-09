@@ -10,7 +10,13 @@ use cln_plugin::{
     Plugin,
     options::{ConfigOption, DefaultBooleanConfigOption, StringArrayConfigOption},
 };
-use cln_rpc::{ClnRpc, model::requests::ListdatastoreRequest};
+use cln_rpc::{
+    ClnRpc,
+    model::{
+        requests::{DecodeRequest, ListdatastoreRequest},
+        responses::DecodeType,
+    },
+};
 use nostr::nips::nip47;
 use nwc::run_nwc;
 use nwc_notifications::{payment_received_handler, payment_sent_handler};
@@ -225,8 +231,47 @@ async fn load_pending_hold_invoices(plugin: Plugin<PluginState>) -> Result<(), a
         .into_inner()
         .invoices;
 
+    let mut rpc = plugin.state().rpc_lock.lock().await;
+
     for invoice in invoices {
         if invoice.state() == InvoiceState::Accepted || invoice.state() == InvoiceState::Unpaid {
+            // Bound the accepted handler by the invoice's expiry. The hold
+            // plugin has no expired state, so without this it would wait
+            // forever on an invoice that expires while Unpaid.
+            let invoice_decoded = rpc
+                .call_typed(&DecodeRequest {
+                    string: invoice.invoice.clone(),
+                })
+                .await?;
+
+            if !invoice_decoded.valid {
+                log::warn!(
+                    "Skipping hold invoice {}, could not decode it",
+                    hex::encode(&invoice.payment_hash)
+                );
+                continue;
+            }
+
+            let (created_at, expiry) = match invoice_decoded.item_type {
+                DecodeType::BOLT12_INVOICE => (
+                    invoice_decoded.invoice_created_at,
+                    invoice_decoded.invoice_relative_expiry.map(u64::from),
+                ),
+                DecodeType::BOLT11_INVOICE => {
+                    (invoice_decoded.created_at, invoice_decoded.expiry)
+                }
+                _ => continue,
+            };
+
+            let (Some(created_at), Some(expiry)) = (created_at, expiry) else {
+                log::warn!(
+                    "Skipping hold invoice {}: missing creation time or expiry",
+                    hex::encode(&invoice.payment_hash)
+                );
+                continue;
+            };
+            let expires_at = created_at.saturating_add(expiry);
+
             log::debug!(
                 "Starting holdinvoice accepted handler for {}",
                 hex::encode(&invoice.payment_hash)
@@ -234,6 +279,7 @@ async fn load_pending_hold_invoices(plugin: Plugin<PluginState>) -> Result<(), a
             tokio::spawn(holdinvoice_accepted_handler(
                 plugin.clone(),
                 invoice.payment_hash,
+                expires_at,
             ));
         }
     }

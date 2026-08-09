@@ -1294,9 +1294,10 @@ async def test_hold_invoice(
                 "log-level": "debug",
                 "plugin": get_plugin,
                 "important-plugin": get_hold,
+                "hold-grpc-port": node_factory.get_unused_port(),
                 "nip47-relays": url,
                 "may_reconnect": True,
-                "broken_log": r"Relay receiver exited with error",
+                "broken_log": r"Relay receiver exited with error|Connection failed",
             },
         ],
     )
@@ -1824,3 +1825,80 @@ async def test_hold_invoice(
         ):
             hold_events.append(content)
     assert len(hold_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_hold_invoice_expiry(
+    node_factory,
+    get_plugin,  # noqa: F811
+    get_hold,  # noqa: F811
+    nostr_relay,
+):
+    url = nostr_relay
+    l2 = node_factory.get_node(
+        options={
+            "log-level": "debug",
+            "plugin": get_plugin,
+            "important-plugin": get_hold,
+            "hold-grpc-port": node_factory.get_unused_port(),
+            "nip47-relays": url,
+        },
+        broken_log=r"Relay receiver exited with error|Connection failed",
+    )
+    uri_res = l2.rpc.call("nip47-create", ["test1", 3010])
+    uri_str = uri_res["uri"]
+    client_pubkey = PublicKey.parse(uri_res["clientkey_public"])
+    LOGGER.info(uri_str)
+    uri = NostrWalletConnectUri.parse(uri_str)
+
+    preimage = secrets.token_hex(32)
+    payment_hash = hashlib.sha256(bytes.fromhex(preimage)).hexdigest()
+    LOGGER.info(f"preimage: {preimage}")
+    LOGGER.info(f"payment_hash: {payment_hash}")
+    content = {
+        "method": "make_hold_invoice",
+        "params": {
+            "amount": 5000,
+            "payment_hash": payment_hash,
+            "expiry": 5,
+        },
+    }
+    content = json.dumps(content)
+    keys = Keys(uri.secret())
+    encrypted_content = keys.nip04_encrypt(uri.public_key(), content)
+    event = (
+        await EventBuilder(Kind(23194), encrypted_content)
+        .tags([Tag.public_key(uri.public_key())])
+        .finalize_async(keys)
+    )
+    client = Client()
+    relay_url = RelayUrl.parse(url)
+    await client.add_relay(relay_url)
+    await client.connect()
+
+    await fetch_info_event(client, uri)
+
+    (responses1, _res) = await fetch_event_responses(
+        client, client_pubkey, 23195, client.send_event(event), 1
+    )
+    error_events = []
+    success_events = []
+    for event in responses1:
+        LOGGER.info(event)
+        content = keys.nip04_decrypt(uri.public_key(), event.content())
+        content = json.loads(content)
+        LOGGER.info(content)
+        if "result" in content and content["result"] is not None:
+            success_events.append(content)
+        if "error" in content and content["error"] is not None:
+            error_events.append(content)
+
+    assert len(success_events) == 1
+    assert len(error_events) == 0
+
+    # The hold plugin has no expired state: an invoice that expires without
+    # ever being accepted (and without being cancelled) stays `Unpaid` and the
+    # track stream never ends on its own. The handler must give up at the
+    # invoice's expiry instead of hanging, and must not send a spurious
+    # accepted notification.
+    l2.daemon.wait_for_log("was not accepted, skipping notification", timeout=20)

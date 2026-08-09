@@ -107,6 +107,8 @@ async fn make_hold_invoice(
         })?
         .into_inner();
 
+    let expires_at = Timestamp::now() + expiry;
+
     let response = nip47::MakeHoldInvoiceResponse {
         invoice: Some(holdinvoice.bolt11),
         transaction_type: nip47::TransactionType::Incoming,
@@ -114,12 +116,16 @@ async fn make_hold_invoice(
         description_hash: params.description_hash,
         amount: params.amount,
         created_at: Timestamp::now(),
-        expires_at: Timestamp::now() + expiry,
+        expires_at,
         metadata: None,
         payment_hash: params.payment_hash,
     };
 
-    tokio::spawn(holdinvoice_accepted_handler(plugin, payment_hash));
+    tokio::spawn(holdinvoice_accepted_handler(
+        plugin,
+        payment_hash,
+        expires_at.as_secs(),
+    ));
     Ok(response)
 }
 
