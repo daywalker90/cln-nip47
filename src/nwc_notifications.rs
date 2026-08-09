@@ -538,7 +538,7 @@ pub async fn holdinvoice_accepted_handler(
 
     let payment_hash_hash = Sha256::from_str(&payment_hash_str)?;
 
-    let mut lowest_htlc_expiry = 0;
+    let mut lowest_htlc_expiry = u32::MAX;
 
     for peer in list_peer_channels {
         if let Some(htlcs) = peer.htlcs {

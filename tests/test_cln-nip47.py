@@ -1376,6 +1376,8 @@ async def test_hold_invoice(
     assert lookup_hold.state.name == "PENDING"
     assert lookup_hold.settled_at is None
 
+    getinfo = l2.rpc.getinfo()
+
     (responses2, _res) = await fetch_event_responses(
         client,
         client_pubkey,
@@ -1394,6 +1396,10 @@ async def test_hold_invoice(
         if content["notification_type"] == "hold_invoice_accepted":
             hold_events.append(content)
         assert content["notification"]["payment_hash"] == payment_hash
+    assert len(hold_events) == 1
+    assert (
+        hold_events[0]["notification"]["settle_deadline"] > getinfo["blockheight"] + 1
+    )
 
     lookup_hold = await nwc.lookup_invoice(
         LookupInvoiceRequest(
