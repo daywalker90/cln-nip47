@@ -8,9 +8,21 @@
 
 ### Changed
 - `pay_keysend` will use the new CLN `xkeysend` command using CLN v26.06+
+- Budget is updated on demand instead of by a background task
+- `list_transactions` is bounded (at most 500 transactions and ~128kB response) to prevent DoS
+- Upgrade ``nostr_sdk`` and CLN dependencies
 
 ### Removed
 - ``multi_pay_invoice`` and ``multi_pay_keysend``, they were removed from the spec
+
+### Fixed
+- ``nip47-create`` no longer fails if the NWC fails to start, the error is only logged, since the NWC at that point is already persisted to the DB
+- Paying amount-less invoices with a request amount
+- Legacy keysend TLV byte decoding
+- Report the correct error when the payment route is too expensive
+- Notifications are sent per client, so one failing client no longer prevents the others from receiving them
+- Available payment methods are now determined from the node's RPC instead of it's (custom) version string
+- Deduplication of request events instead of filtering unreliably
 
 ## [0.1.9] 2026-04-23
 
