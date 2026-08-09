@@ -18,7 +18,7 @@ use crate::{
     WALLET_HOLD_NOTIFICATIONS,
     WALLET_NOTIFICATIONS,
     WALLET_PAY_METHODS,
-    WALLET_READ_METHODS,
+    WALLET_READ_OR_RECEIVE_METHODS,
     structs::{ID_STORE, NwcStore, PluginState},
 };
 
@@ -234,11 +234,13 @@ pub async fn save_event_id(
     Ok(())
 }
 
-pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (String, String) {
+pub fn build_capabilities(is_receive_only: bool, plugin: &Plugin<PluginState>) -> (String, String) {
     let holdinvoice_support = plugin.state().hold_client.lock().is_some();
 
-    let mut methods = WALLET_READ_METHODS.map(|m| m.to_string()).join(" ");
-    if !is_read_only {
+    let mut methods = WALLET_READ_OR_RECEIVE_METHODS
+        .map(|m| m.to_string())
+        .join(" ");
+    if !is_receive_only {
         methods.push(' ');
         methods.push_str(WALLET_PAY_METHODS.map(|m| m.to_string()).join(" ").as_str());
     }
@@ -274,10 +276,13 @@ pub fn build_capabilities(is_read_only: bool, plugin: &Plugin<PluginState>) -> (
     (methods, notifications)
 }
 
-pub fn build_methods_vec(is_read_only: bool, plugin: &Plugin<PluginState>) -> Vec<nip47::Method> {
+pub fn build_methods_vec(
+    is_receive_only: bool,
+    plugin: &Plugin<PluginState>,
+) -> Vec<nip47::Method> {
     let holdinvoice_support = plugin.state().hold_client.lock().is_some();
-    let mut methods = WALLET_READ_METHODS.to_vec();
-    if !is_read_only {
+    let mut methods = WALLET_READ_OR_RECEIVE_METHODS.to_vec();
+    if !is_receive_only {
         methods.extend_from_slice(&WALLET_PAY_METHODS);
     }
     if holdinvoice_support {
