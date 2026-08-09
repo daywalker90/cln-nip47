@@ -139,7 +139,6 @@ async def test_get_balance(nostr_relay, node_factory, get_plugin):  # noqa: F811
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -190,7 +189,6 @@ async def test_get_info(nostr_relay, node_factory, get_plugin):  # noqa: F811
     url = nostr_relay
     l1 = node_factory.get_node(
         options={
-            "log-level": "debug",
             "plugin": get_plugin,
             "nip47-relays": url,
         },
@@ -296,7 +294,6 @@ async def test_make_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F81
     url = nostr_relay
     l1 = node_factory.get_node(
         options={
-            "log-level": "debug",
             "plugin": get_plugin,
             "nip47-relays": url,
         },
@@ -385,7 +382,6 @@ async def test_pay_keysend(nostr_relay, node_factory, get_plugin):  # noqa: F811
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -444,7 +440,6 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -671,7 +666,6 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -775,13 +769,12 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
             },
             {"log-level": "debug"},
-            {"log-level": "debug", "plugin": get_plugin, "nip47-relays": url},
+            {"plugin": get_plugin, "nip47-relays": url},
         ],
     )
     uri_res = l1.rpc.call("nip47-create", ["test1"])
@@ -949,7 +942,6 @@ async def test_pay_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F811
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -1001,7 +993,6 @@ async def test_persistency(nostr_relay, node_factory, get_plugin):  # noqa: F811
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -1160,7 +1151,6 @@ async def test_budget_command(nostr_relay, node_factory, get_plugin):  # noqa: F
         wait_for_announce=True,
         opts=[
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "nip47-relays": url,
                 "broken_log": r"Relay receiver exited with error|Connection failed",
@@ -1291,7 +1281,6 @@ async def test_hold_invoice(
                 "may_reconnect": True,
             },
             {
-                "log-level": "debug",
                 "plugin": get_plugin,
                 "important-plugin": get_hold,
                 "hold-grpc-port": node_factory.get_unused_port(),
@@ -1837,7 +1826,6 @@ async def test_hold_invoice_expiry(
     url = nostr_relay
     l2 = node_factory.get_node(
         options={
-            "log-level": "debug",
             "plugin": get_plugin,
             "important-plugin": get_hold,
             "hold-grpc-port": node_factory.get_unused_port(),

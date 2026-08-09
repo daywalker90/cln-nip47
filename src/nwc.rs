@@ -230,7 +230,7 @@ async fn nwc_request_handler(
         | ClientNotification::Shutdown => return Ok(()),
     };
 
-    log::debug!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
+    log::trace!("relay_url:{relay_url} subscription_id:{subscription_id} {event:?}");
     let mut use_nip44 = check_nip44_support(&event);
 
     let request = decrypt_request(&event.content, wallet_keys, &client_pubkey, &mut use_nip44)?;
@@ -334,7 +334,7 @@ async fn nwc_request_handler(
             );
             continue;
         }
-        log::debug!("SENT RESPONSE {response_event:?}");
+        log::trace!("SENT RESPONSE {response_event:?}");
     }
 
     Ok(())
@@ -394,7 +394,7 @@ fn decrypt_request(
             }
         }
     };
-    log::debug!("Decrypted (nip44_v2:{use_nip44}):{content}");
+    log::trace!("Decrypted (nip44_v2:{use_nip44}):{content}");
     let request: nip47::Request = match serde_json::from_str(&content) {
         Ok(o) => o,
         Err(e) => {
@@ -417,7 +417,7 @@ fn encrypt_response_content(
             return Err(anyhow!("Error serializing response! {e}"));
         }
     };
-    log::debug!("RESPONSE:{response_str}");
+    log::trace!("RESPONSE:{response_str}");
     if use_nip44 {
         match nip44::encrypt(
             wallet_keys.secret_key(),

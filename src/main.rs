@@ -89,7 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
     unsafe {
         std::env::set_var(
             "CLN_PLUGIN_LOG",
-            "cln_plugin=info,cln_rpc=info,cln_nip47=debug,info",
+            "cln_plugin=info,cln_rpc=info,cln_nip47=trace,info",
         );
     };
     log_panics::init();
@@ -257,9 +257,7 @@ async fn load_pending_hold_invoices(plugin: Plugin<PluginState>) -> Result<(), a
                     invoice_decoded.invoice_created_at,
                     invoice_decoded.invoice_relative_expiry.map(u64::from),
                 ),
-                DecodeType::BOLT11_INVOICE => {
-                    (invoice_decoded.created_at, invoice_decoded.expiry)
-                }
+                DecodeType::BOLT11_INVOICE => (invoice_decoded.created_at, invoice_decoded.expiry),
                 _ => continue,
             };
 

@@ -348,7 +348,7 @@ async fn send_notification(
     notification: &String,
     wallet_service: &WalletService,
 ) -> Result<(), anyhow::Error> {
-    log::debug!("NOTIFICATION: {notification}");
+    log::trace!("NOTIFICATION: {notification}");
     let content_encrypted_nip04 = nip04::encrypt(
         wallet_service.wallet_secret.secret_key(),
         &wallet_service.client_pubkey,
@@ -369,7 +369,7 @@ async fn send_notification(
                 .join(", ")
         );
     }
-    log::debug!("NIP04 NOTIFICATION SENT: {event_nip04:?}");
+    log::trace!("NIP04 NOTIFICATION SENT: {event_nip04:?}");
 
     let content_encrypted_nip44 = nip44::encrypt(
         wallet_service.wallet_secret.secret_key(),
@@ -392,7 +392,7 @@ async fn send_notification(
                 .join(", ")
         );
     }
-    log::debug!("NIP44 NOTIFICATION SENT: {event_nip44:?}");
+    log::trace!("NIP44 NOTIFICATION SENT: {event_nip44:?}");
 
     Ok(())
 }
