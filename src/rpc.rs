@@ -95,7 +95,9 @@ pub async fn nwc_create(
     })
     .await?;
 
-    run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await?;
+    if let Err(e) = run_nwc(plugin.clone(), label.clone(), nwc_store.clone()).await {
+        log::warn!("Failed running nwc: {e}");
+    }
 
     Ok(serde_json::Value::Object(result))
 }

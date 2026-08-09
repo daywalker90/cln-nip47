@@ -79,10 +79,10 @@ pub fn parse_time_period(input: &str) -> Result<u64, anyhow::Error> {
         if let Ok(time_unit) = unit.parse() {
             match time_unit {
                 TimeUnit::Second => Ok(value),
-                TimeUnit::Minute => Ok(value * 60),
-                TimeUnit::Hour => Ok(value * 60 * 60),
-                TimeUnit::Day => Ok(value * 60 * 60 * 24),
-                TimeUnit::Week => Ok(value * 60 * 60 * 24 * 7),
+                TimeUnit::Minute => Ok(value.saturating_mul(60)),
+                TimeUnit::Hour => Ok(value.saturating_mul(60 * 60)),
+                TimeUnit::Day => Ok(value.saturating_mul(60 * 60 * 24)),
+                TimeUnit::Week => Ok(value.saturating_mul(60 * 60 * 24 * 7)),
             }
         } else {
             Err(anyhow!(format!("Unsupported time unit: {unit}")))
