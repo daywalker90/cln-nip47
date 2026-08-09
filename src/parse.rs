@@ -16,19 +16,20 @@ pub async fn read_startup_options(
     plugin: &ConfiguredPlugin<PluginState, tokio::io::Stdin, tokio::io::Stdout>,
     state: &PluginState,
 ) -> Result<(), anyhow::Error> {
-    let relays_str = if let Some(relays) = plugin.option(&OPT_RELAYS).unwrap() {
-        if relays.is_empty() {
-            return Err(anyhow!(
-                "Empty `{}` option, must specify atleast one relay url!",
-                OPT_RELAYS.name()
-            ));
-        }
-        relays
+    let relays_str = if plugin
+        .option(&OPT_RELAYS)
+        .unwrap()
+        .is_none_or(|v| v.is_empty())
+    {
+        vec![
+            "wss://nos.lol".to_owned(),
+            "wss://relay.primal.net".to_owned(),
+            "wss://relay.getalby.com/v1".to_owned(),
+            "wss://relay.nostr.net".to_owned(),
+            "wss://relay.snort.social".to_owned(),
+        ]
     } else {
-        return Err(anyhow!(
-            "`{}` not set, must specify atleast one relay url!",
-            OPT_RELAYS.name()
-        ));
+        plugin.option(&OPT_RELAYS).unwrap().unwrap()
     };
 
     let mut rpc = ClnRpc::new(

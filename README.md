@@ -97,7 +97,12 @@ It is highly recommended to use your own private relay since public relays may l
 For a private relay you can for example use [nostr-rs-relay](https://github.com/scsibug/nostr-rs-relay) with ``pubkey_whitelist`` set to both ``clientkey_public`` and ``walletkey_public`` (returned from ``nip47-create``/``nip47-list``).
 
 ## Options
-* ``nip47-relays``: Specify the relays that you want to use with your NWC. Can be set multiple times to use multiple relays. NWC's you create will save these and even if you add or remove relays keep the relays from the moment you created that NWC. You must set this atleast one time.
+* ``nip47-relays``: Specify the relays that you want to use with your NWC. Can be set multiple times to use multiple relays. NWC's you create will save these and even if you add or remove relays keep the relays from the moment you created that NWC. If you don't set this yourself these default relays will be used:
+  * ``wss://nos.lol``
+  * ``wss://relay.primal.net``
+  * ``wss://relay.getalby.com/v1``
+  * ``wss://relay.nostr.net``
+  * ``wss://relay.snort.social``
 * ``nip47-notifications``: Enable/disable nip47 notifications. Default is enabled (``true``)
 
 ## Methods
