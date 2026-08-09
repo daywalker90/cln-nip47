@@ -51,7 +51,7 @@
 
 
 # cln-nip47
-A core lightning plugin to connect wallets via Nostr Wallet Connect (NWC) as specified in [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md).
+A core lightning plugin to connect wallets via Nostr Wallet Connect (NWC) as specified in [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md). It is intended to be used by a single user, since all notifications got to all NWC's.
 
 * [Installation](#installation)
 * [Building](#building)
