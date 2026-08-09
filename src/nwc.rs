@@ -19,7 +19,6 @@ use tokio::time;
 
 use crate::{
     OPT_NOTIFICATIONS,
-    STARTUP_DELAY,
     nwc_balance::get_balance_response,
     nwc_hold::{
         cancel_hold_invoice_response,
@@ -105,8 +104,7 @@ pub async fn run_nwc(
 
             let filter = Filter::new()
                 .kind(Kind::WalletConnectRequest)
-                .author(client_keys_clone.public_key())
-                .since(Timestamp::now() - STARTUP_DELAY - 1);
+                .author(client_keys_clone.public_key());
 
             let mut notifications = nostr_client_clone.notifications();
 
