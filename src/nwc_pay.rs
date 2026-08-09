@@ -314,8 +314,8 @@ fn map_cln_error_to_nip47(
             } else if !is_xpay && c == 206 {
                 (
                     nip47::NIP47Error {
-                        code: nip47::ErrorCode::InsufficientBalance,
-                        message: e.to_string(),
+                        code: nip47::ErrorCode::PaymentFailed,
+                        message: format!("Route too expensive: {e}"),
                     },
                     Some(id.to_owned()),
                 )
