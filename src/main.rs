@@ -329,12 +329,12 @@ async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::E
         cert_dir.to_str().unwrap()
     );
 
-    let max_retries = 10;
-    let mut retries = 0;
-    while retries < max_retries && !do_certificates_exist(&cert_dir) {
+    let cert_max_retries = 10;
+    let mut cert_retries = 0;
+    while cert_retries < cert_max_retries && !do_certificates_exist(&cert_dir) {
         log::debug!("Hold certificates incomplete. Waiting...");
         time::sleep(Duration::from_millis(500)).await;
-        retries += 1;
+        cert_retries += 1;
     }
 
     let ca_cert = tokio::fs::read(cert_dir.join("ca.pem")).await?;
@@ -355,15 +355,18 @@ async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::E
         .keep_alive_while_idle(true)
         .connect_timeout(Duration::from_secs(5));
 
-    let max_retries = 20;
+    let chan_max_retries = 20;
+    let mut chan_retries = 0;
 
     let channel = loop {
         match endpoint.connect().await {
             Ok(channel) => break channel,
-            Err(e) if retries < max_retries => {
-                retries += 1;
+            Err(e) if chan_retries < chan_max_retries => {
+                chan_retries += 1;
 
-                log::debug!("Hold gRPC server not ready, retrying ({retries}/{max_retries}): {e}");
+                log::debug!(
+                    "Hold gRPC server not ready, retrying ({chan_retries}/{chan_max_retries}): {e}"
+                );
 
                 time::sleep(Duration::from_millis(500)).await;
             }
