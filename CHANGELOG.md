@@ -7,6 +7,7 @@
 - holdinvoice notification: ``hold_invoice_accepted``
 
 ### Changed
+- there are now five default relays that will be used if ``nip47-relays`` is not set
 - `pay_keysend` will use the new CLN `xkeysend` command using CLN v26.06+
 - Budget is updated on demand instead of by a background task
 - `list_transactions` is bounded (at most 500 transactions and ~128kB response) to prevent DoS

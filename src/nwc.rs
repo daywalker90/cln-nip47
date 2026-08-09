@@ -332,6 +332,12 @@ async fn nwc_request_handler(
             );
             continue;
         }
+        for success in send_result.success {
+            log::trace!("Sent to {}", success.0);
+        }
+        for failure in send_result.failed {
+            log::trace!("Failed to send to {}: {}", failure.0, failure.1);
+        }
         log::trace!("SENT RESPONSE {response_event:?}");
     }
 
