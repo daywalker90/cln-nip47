@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use cln_plugin::Plugin;
 use cln_rpc::{
     ClnRpc,
+    Notification,
     model::{
         requests::{DecodeRequest, ListinvoicesRequest, ListpaysRequest, ListpeerchannelsRequest},
         responses::{
@@ -14,6 +15,7 @@ use cln_rpc::{
             ListpaysPaysStatus,
         },
     },
+    notifications::{InvoicePaymentNotification, SendPaySuccessNotification},
     primitives::Sha256,
 };
 use nostr::{
@@ -40,13 +42,12 @@ pub async fn payment_received_handler(
     if !plugin.option(&OPT_NOTIFICATIONS).unwrap() {
         return Ok(());
     }
-    let label = args
-        .get("invoice_payment")
-        .ok_or_else(|| anyhow!("Malformed invoice_payment notification: missing invoice_payment"))?
-        .get("label")
-        .ok_or_else(|| anyhow!("Malformed invoice_payment notification: missing label"))?
-        .as_str()
-        .ok_or_else(|| anyhow!("label not a string"))?;
+
+    let notif: Notification = serde_json::from_value(args)?;
+    let inv_pay_notif: InvoicePaymentNotification = match notif {
+        Notification::InvoicePayment(invoice_payment_notification) => invoice_payment_notification,
+        _ => return Err(anyhow!("Wrong notification type, expected invoice_payment")),
+    };
 
     let mut rpc = plugin.state().rpc_lock.lock().await;
 
@@ -54,7 +55,7 @@ pub async fn payment_received_handler(
         .call_typed(&ListinvoicesRequest {
             index: None,
             invstring: None,
-            label: Some(label.to_owned()),
+            label: Some(inv_pay_notif.label),
             limit: None,
             offer_id: None,
             payment_hash: None,
@@ -191,14 +192,15 @@ pub async fn payment_sent_handler(
     if !plugin.option(&OPT_NOTIFICATIONS).unwrap() {
         return Ok(());
     }
-    let payment_hash = args
-        .get("sendpay_success")
-        .ok_or_else(|| anyhow!("Malformed sendpay_success notification: missing sendpay_success"))?
-        .get("payment_hash")
-        .ok_or_else(|| anyhow!("Malformed sendpay_success notification: missing payment_hash"))?
-        .as_str()
-        .ok_or_else(|| anyhow!("payment_hash not a string"))?
-        .to_owned();
+
+    let notif: Notification = serde_json::from_value(args)?;
+    let send_pay_notif: SendPaySuccessNotification = match notif {
+        Notification::SendPaySuccess(send_pay_success_notification) => {
+            send_pay_success_notification
+        }
+        _ => return Err(anyhow!("Wrong notification type, expected sendpay_success")),
+    };
+    let payment_hash = hex::encode(send_pay_notif.payment_hash);
 
     let mut rpc = plugin.state().rpc_lock.lock().await;
 
