@@ -33,7 +33,7 @@ pub async fn cleanup_event_ids(plugin: Plugin<PluginState>) -> Result<(), anyhow
                     continue;
                 }
                 let timestamp = Timestamp::from_str(&id.string.unwrap())?;
-                if now.as_secs() - timestamp.as_secs() > ID_MAX_AGE {
+                if now.as_secs().saturating_sub(timestamp.as_secs()) > ID_MAX_AGE {
                     rpc.call_typed(&DeldatastoreRequest {
                         generation: None,
                         key: id.key.clone(),

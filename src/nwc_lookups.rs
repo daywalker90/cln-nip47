@@ -245,6 +245,7 @@ async fn lookup_holdinvoice(
     })
 }
 
+#[allow(clippy::too_many_lines)]
 async fn get_and_decode_holdinvoice(
     rpc: &mut ClnRpc,
     hold_client: &mut HoldClient<Channel>,
@@ -289,6 +290,12 @@ async fn get_and_decode_holdinvoice(
                 code: nip47::ErrorCode::Internal,
                 message: e.to_string(),
             })?;
+        if !invoice_decoded.valid {
+            return Err(nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: "Invalid invoice decoded".to_owned(),
+            });
+        }
 
         Ok((hold_invoice, invoice_decoded))
     } else {
@@ -301,6 +308,13 @@ async fn get_and_decode_holdinvoice(
                 code: nip47::ErrorCode::Internal,
                 message: e.to_string(),
             })?;
+        if !invoice_decoded.valid {
+            return Err(nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: "Invalid invoice decoded".to_owned(),
+            });
+        }
+
         let ph = match invoice_decoded.item_type {
             DecodeType::BOLT12_INVOICE => invoice_decoded.invoice_payment_hash.unwrap(),
             DecodeType::BOLT11_INVOICE => invoice_decoded.payment_hash.unwrap().to_string(),
@@ -351,6 +365,12 @@ async fn get_and_decode_holdinvoice(
                 code: nip47::ErrorCode::Internal,
                 message: e.to_string(),
             })?;
+        if !invoice_decoded.valid {
+            return Err(nip47::NIP47Error {
+                code: nip47::ErrorCode::Other,
+                message: "Invalid invoice decoded".to_owned(),
+            });
+        }
         Ok((hold_invoice, invoice_decoded))
     }
 }
