@@ -63,16 +63,42 @@ async fn pay_invoice(
 
         let id = get_payment_id(&params, &decoded_invoice)?;
 
-        let invoice_amt_msat = get_invoice_amount_msat(&decoded_invoice, &id)?;
+        let invoice_amt_msat = get_invoice_amount_msat(&decoded_invoice);
 
         let nwc_store =
             load_nwc_and_check_budget(&mut rpc, label, &params, invoice_amt_msat, &id).await?;
+
+        let amt_msat = match (params.amount, invoice_amt_msat) {
+            (None, None) => {
+                return Err((
+                    nip47::NIP47Error {
+                        code: nip47::ErrorCode::Internal,
+                        message: "No amount found in request or invoice".to_owned(),
+                    },
+                    Some(id.clone()),
+                ));
+            }
+            (None, Some(b)) => b,
+            (Some(a), None) => a,
+            (Some(a), Some(b)) => {
+                if a != b {
+                    return Err((
+                        nip47::NIP47Error {
+                            code: nip47::ErrorCode::Internal,
+                            message: "request amount does not match invoice amount".to_owned(),
+                        },
+                        Some(id.clone()),
+                    ));
+                }
+                a
+            }
+        };
 
         // Reserve the invoice amount plus the worst case fee so that no
         // combination of concurrent payments can exceed the budget and so that
         // balance queries during the payment reflect the reserved amount.
         if get_budget_msat(&nwc_store).unwrap_or(u64::MAX)
-            < invoice_amt_msat.saturating_add(payment_fee_reserve_msat(invoice_amt_msat))
+            < amt_msat.saturating_add(payment_fee_reserve_msat(amt_msat))
         {
             return Err((
                 nip47::NIP47Error {
@@ -83,7 +109,7 @@ async fn pay_invoice(
             ));
         }
 
-        let reservation = reserve_budget(&mut rpc, label, &nwc_store, invoice_amt_msat)
+        let reservation = reserve_budget(&mut rpc, label, &nwc_store, amt_msat)
             .await
             .map_err(|e| {
                 (
@@ -215,30 +241,15 @@ fn get_payment_id(
     Ok(id)
 }
 
-fn get_invoice_amount_msat(
-    decoded_invoice: &DecodeResponse,
-    id: &str,
-) -> Result<u64, (nip47::NIP47Error, Option<String>)> {
-    decoded_invoice
-        .amount_msat
-        .as_ref()
-        .ok_or_else(|| {
-            (
-                nip47::NIP47Error {
-                    code: nip47::ErrorCode::Internal,
-                    message: "Missing amount_msat in decoded invoice".to_owned(),
-                },
-                Some(id.to_owned()),
-            )
-        })
-        .map(Amount::msat)
+fn get_invoice_amount_msat(decoded_invoice: &DecodeResponse) -> Option<u64> {
+    decoded_invoice.amount_msat.as_ref().map(Amount::msat)
 }
 
 async fn load_nwc_and_check_budget(
     rpc: &mut ClnRpc,
     label: &str,
     params: &nip47::PayInvoiceRequest,
-    invoice_amt_msat: u64,
+    invoice_amt_msat: Option<u64>,
     id: &str,
 ) -> Result<NwcStore, (nip47::NIP47Error, Option<String>)> {
     let nwc_store = load_nwc_store(rpc, label).await.map_err(|e| {
@@ -251,20 +262,17 @@ async fn load_nwc_and_check_budget(
         )
     })?;
 
-    budget_amount_check(
-        params.amount,
-        Some(invoice_amt_msat),
-        get_budget_msat(&nwc_store),
-    )
-    .map_err(|e| {
-        (
-            nip47::NIP47Error {
-                code: nip47::ErrorCode::QuotaExceeded,
-                message: e.to_string(),
-            },
-            Some(id.to_owned()),
-        )
-    })?;
+    budget_amount_check(params.amount, invoice_amt_msat, get_budget_msat(&nwc_store)).map_err(
+        |e| {
+            (
+                nip47::NIP47Error {
+                    code: nip47::ErrorCode::QuotaExceeded,
+                    message: e.to_string(),
+                },
+                Some(id.to_owned()),
+            )
+        },
+    )?;
 
     Ok(nwc_store)
 }
