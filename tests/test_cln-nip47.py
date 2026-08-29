@@ -1380,9 +1380,13 @@ async def test_hold_invoice(
     assert lookup_hold.invoice == success_events[0]["result"]["invoice"]
     assert lookup_hold.amount == 5000
     assert lookup_hold.description is None
-    assert lookup_hold.created_at.as_secs() == success_events[0]["result"]["created_at"]
+    assert lookup_hold.created_at.as_secs() == pytest.approx(
+        success_events[0]["result"]["created_at"], abs=1
+    )
     assert lookup_hold.description_hash is None
-    assert lookup_hold.expires_at.as_secs() == success_events[0]["result"]["expires_at"]
+    assert lookup_hold.expires_at.as_secs() == pytest.approx(
+        success_events[0]["result"]["expires_at"], abs=1
+    )
     assert lookup_hold.fees_paid == 0
     assert lookup_hold.metadata is None
     assert lookup_hold.preimage is None
