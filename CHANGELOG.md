@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.1] 2026-09-26
+
+### Changed
+- updated dependencies, including nostr dependencies
+
 ## [0.2.0] 2026-08-09
 
 ### Added
