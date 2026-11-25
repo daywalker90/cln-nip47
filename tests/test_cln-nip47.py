@@ -449,9 +449,9 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
         ],
     )
     l1.rpc.call(
-        "pay",
+        "xpay",
         {
-            "bolt11": l2.rpc.call(
+            "invstring": l2.rpc.call(
                 "invoice",
                 {
                     "amount_msat": 500000000,
@@ -581,7 +581,7 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
     assert invoice_lookup.state.name == "PENDING"
     assert invoice_lookup.settled_at is None
 
-    l2.rpc.call("pay", {"bolt11": invoice.invoice})
+    l2.rpc.call("xpay", {"invstring": invoice.invoice})
     listpays_rpc = l1.rpc.call("listinvoices", {"invstring": invoice.invoice})[
         "invoices"
     ][0]
@@ -619,11 +619,11 @@ async def test_lookup_invoice(nostr_relay, node_factory, get_plugin):  # noqa: F
         },
     )
     invoice_decode = l3.rpc.call("decode", [invoice["bolt11"]])
-    pay = l1.rpc.call("pay", {"bolt11": invoice["bolt11"]})
+    l1.rpc.call("xpay", {"invstring": invoice["bolt11"]})
     listpays_rpc = l1.rpc.call("listpays", {"bolt11": invoice["bolt11"]})["pays"][0]
     invoice_lookup = await nwc.lookup_invoice(
         LookupInvoiceRequest(
-            payment_hash=pay["payment_hash"],
+            payment_hash=invoice["payment_hash"],
             invoice=None,
         )
     )
@@ -728,7 +728,7 @@ async def test_list_transactions(nostr_relay, node_factory, get_plugin):  # noqa
             amount=0, description="test_0_amt", description_hash=None, expiry=None
         )
     )
-    result = l2.rpc.call("pay", [invoice.invoice, 1111])
+    result = l2.rpc.call("xpay", [invoice.invoice, 1111])
 
     result = await nwc.list_transactions(
         ListTransactionsRequest(
@@ -803,7 +803,7 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
         client,
         client_pubkey,
         23196,
-        lambda: l1.rpc.call("pay", [invoice["bolt11"]]),
+        lambda: l1.rpc.call("xpay", [invoice["bolt11"]]),
         1,
     )
 
@@ -839,7 +839,7 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
         client,
         client_pubkey,
         23196,
-        lambda: l3.rpc.call("pay", [result.invoice]),
+        lambda: l3.rpc.call("xpay", [result.invoice]),
         1,
     )
     invoice2_list = l1.rpc.call("listinvoices", {"invstring": result.invoice})[
@@ -868,7 +868,10 @@ async def test_notifications(nostr_relay, node_factory, get_plugin):  # noqa: F8
     assert received_events[0]["notification"]["description"] == "test2"
     assert "description_hash" not in received_events[0]["notification"]
     assert received_events[0]["notification"]["preimage"] == pay2["payment_preimage"]
-    assert received_events[0]["notification"]["payment_hash"] == pay2["payment_hash"]
+    assert (
+        received_events[0]["notification"]["payment_hash"]
+        == invoice2_list["payment_hash"]
+    )
     assert received_events[0]["notification"]["amount"] == 3000
     assert received_events[0]["notification"]["fees_paid"] == 0
     assert received_events[0]["notification"]["created_at"] == pytest.approx(
